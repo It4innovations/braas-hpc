@@ -1,4 +1,4 @@
-# BRaaS-HPC (Rendering-as-a-Service)
+# BRaaS-HPC (Rendering-as-a-service for Blender on HPC)
 
 #### BLENDER ADD-ON TO EXTEND ITS CAPABILITIES IN TERMS OF RENDERING ON AN HPC CLUSTER
 
