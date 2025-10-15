@@ -1,0 +1,13 @@
+--- types.h	2024-01-29 09:58:03.000000000 +0200
++++ /users/jaromila/blender/4.0/scripts/addons/cycles/source/kernel/types.h	2024-01-27 23:24:36.000000000 +0200
+@@ -86,6 +86,10 @@
+ #define __VISIBILITY_FLAG__
+ #define __VOLUME__
+ 
++#undef __PRINCIPLED_HAIR__
++#undef __TRANSPARENT_SHADOWS__
++#undef WITH_OSL
++
+ /* Device specific features */
+ #ifdef WITH_OSL
+ #  define __OSL__
