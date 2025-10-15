@@ -791,7 +791,7 @@ class RaasPreferences(AddonPreferences):
 
     raas_scripts_repository_branch: StringProperty(
         name='Branch',
-        default='master'
+        default='main'
     ) # type: ignore
 
     raas_blender_link: StringProperty(

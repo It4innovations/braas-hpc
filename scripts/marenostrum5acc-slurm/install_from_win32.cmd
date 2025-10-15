@@ -32,15 +32,15 @@ REM ######################################################################
 
 REM Download braas-hpc for Linux
 echo Downloading braas-hpc for Linux...
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/It4innovations/braas-hpc/-/archive/master/braas-hpc-master.tar.gz' -OutFile 'braas-hpc-master.tar.gz'"
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/It4innovations/braas-hpc/-/archive/main/braas-hpc-main.tar.gz' -OutFile 'braas-hpc-main.tar.gz'"
 
 REM Transfer braas-hpc archive to MareNostrum5 cluster
 echo Transferring braas-hpc archive to MareNostrum5...
-scp braas-hpc-master.tar.gz MareNostrum5:~/braas-hpc.tar.gz
+scp braas-hpc-main.tar.gz MareNostrum5:~/braas-hpc.tar.gz
 
 REM Run the Linux installation script
 echo Running installation script on MareNostrum5...
-ssh MareNostrum5 "if [ -d ~/braas-hpc ] ; then rm -rf ~/braas-hpc ; fi ; cd ~/ ; tar -xf braas-hpc.tar.gz ; mv braas-hpc-master ~/braas-hpc ; rm braas-hpc.tar.gz ;"
+ssh MareNostrum5 "if [ -d ~/braas-hpc ] ; then rm -rf ~/braas-hpc ; fi ; cd ~/ ; tar -xf braas-hpc.tar.gz ; mv braas-hpc-main ~/braas-hpc ; rm braas-hpc.tar.gz ;"
 
 REM ######################################################################
 echo Installation completed.

@@ -31,7 +31,7 @@ New features:
 
 
 # Installation & Authentication
-For add-on installation you first read [Installation and Setup Guide](https://github.com/It4innovations/braas-hpc/-/blob/master/doc/braas-hpc_install_setup.pdf).
+For add-on installation you first read Installation and Setup Guide (TODO).
 
 
 # Compatibility
@@ -107,7 +107,7 @@ If some particular job from the list in the ***Jobs*** menu is selected, users c
 
 
 # License
-This software is licensed under the terms of the [GNU General Public License](https://github.com/It4innovations/braas-hpc/blob/master/LICENSE).
+This software is licensed under the terms of the [GNU General Public License](https://github.com/It4innovations/braas-hpc/blob/main/LICENSE).
 
 
 # Acknowledgement
