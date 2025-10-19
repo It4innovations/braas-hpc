@@ -408,6 +408,7 @@ class RaasSession:
         self.key_file = None
         self.key_file_password = None
         self.password = None 
+        self.password_2fa = None
         self.use_password = None
 
     def paramiko_is_alive(self, server=None):
@@ -464,15 +465,55 @@ class RaasSession:
         else:
             return not self.key_file_password is None and len(self.key_file_password) > 0
 
-    def paramiko_create_session(self, password):
+    def paramiko_create_session(self, password, password_2fa=None):
         import paramiko
-
-        # pref = raas_pref.preferences()
-        # preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]    
+        class Interactive2FASSHClient(paramiko.SSHClient):
+            """Custom SSH client that handles 2FA authentication"""
             
-        # key_file = preset.raas_private_key_path
-        # username = preset.raas_da_username
-        # password = preset.raas_private_key_password
+            def __init__(self, password=None, totp_code=None):
+                super().__init__()
+                self.password = password
+                self.totp_code = totp_code
+                
+            def _auth(self, username, *args, **kwargs):
+                """Override the authentication method to handle 2FA"""        
+                
+                # First try the original authentication
+                try:
+                    if not self.totp_code is None:
+                        raise paramiko.AuthenticationException("Trigger 2FA interactive auth")
+                    
+                    return super()._auth(username, *args, **kwargs)
+                except paramiko.AuthenticationException as e:
+                    # If original auth fails and we have 2FA code, try interactive auth
+                    if self.totp_code and self._transport:
+                        try:
+                            # Use interactive authentication for 2FA
+                            def auth_handler(title, instructions, prompt_list):
+                                responses = []
+                                for prompt_text, echo in prompt_list:
+                                    prompt_lower = prompt_text.lower()
+                                    
+                                    # Check for password prompts
+                                    if any(keyword in prompt_lower for keyword in ['password', 'passphrase']) and not echo:
+                                        responses.append(self.password or '')
+                                    # Check for 2FA prompts
+                                    elif any(keyword in prompt_lower for keyword in ['verification', 'authenticator', 'token', 'code', '2fa', 'totp']):
+                                        responses.append(self.totp_code or '')
+                                    else:
+                                        # Default to TOTP code for unknown prompts
+                                        responses.append(self.totp_code or '')
+                                
+                                return responses
+                            
+                            # Try interactive authentication
+                            self._transport.auth_interactive(username, auth_handler)
+                            return
+                        except Exception as interactive_ex:
+                            raise paramiko.AuthenticationException(f"2FA authentication failed: {interactive_ex}")
+                    
+                    # Re-raise original exception if no 2FA handling
+                    raise e        
 
         if not password is None:
             if self.use_password:
@@ -480,9 +521,15 @@ class RaasSession:
             else:
                 self.key_file_password = password
 
+        if not password_2fa is None or len(password_2fa) > 0:
+            self.password_2fa = password_2fa
+        else:
+            self.password_2fa = None
+ 
         ssh = None
         try: 
-            ssh = paramiko.SSHClient()
+            #ssh = paramiko.SSHClient()
+            ssh = Interactive2FASSHClient(password=self.password, totp_code=self.password_2fa)           
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.load_system_host_keys()
 
@@ -531,7 +578,7 @@ class RaasSession:
 
             raise Exception("paramiko ssh command failed:  %s: %s" % (e.__class__, e))
         
-    def show_dialog(self, server, username, key_file, key_file_password, password, use_password):
+    def show_dialog(self, server, username, key_file, key_file_password, password, use_password, use_password_2fa):
         if not self.paramiko_is_alive(server):
             self.paramiko_close(server)
 
@@ -540,10 +587,11 @@ class RaasSession:
             self.key_file = key_file
             self.key_file_password = key_file_password
             self.password = password
+            self.password_2fa = None
             self.use_password = use_password
 
-            if self.check_password():
-                self.paramiko_create_session(None)
+            if self.check_password() and not use_password_2fa:
+                self.paramiko_create_session(None, None)
             else:
                 bpy.ops.wm.raas_password_input('INVOKE_DEFAULT')
                 raise Exception("Password required")
@@ -558,6 +606,12 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         subtype='PASSWORD'  # <-- masks input in Blender 3.2+
     ) # type: ignore
 
+    password_2fa: bpy.props.StringProperty(
+        name="2FA Code",
+        description="Enter your 2FA code",
+        subtype='PASSWORD'  # <-- masks input in Blender 3.2+
+    ) # type: ignore    
+
     server: bpy.props.StringProperty(
         name="Server"
     ) # type: ignore    
@@ -566,15 +620,6 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         layout = self.layout
 
         box = layout
-
-        # raas_box = box.column()
-        # path_split = raas_box.split(**raas_pref.factor(0.25), align=True)
-        # path_split.label(text='Local Storage Path:')
-        # path_box = path_split.row(align=True)
-        # path_box.prop(self, 'raas_job_storage_path', text='')
-        # props = path_box.operator(
-        #     'raas.explore_file_path', text='', icon='DISK_DRIVE')
-        # props.path = self.raas_job_storage_path
 
         # Display server name
         session = context.scene.raas_session
@@ -593,13 +638,15 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         box1_row = box1.row(align=True)
         box1_row.prop(self, 'password', text='')
 
+        box2 = box.split(**raas_pref.factor(0.25), align=True)
+        box2.label(text='2FA Code:')
+        box2_row = box2.row(align=True)
+        box2_row.prop(self, 'password_2fa', text='')
+
     def execute(self, context):
         self.report({'INFO'}, f"Password entered (hidden): {len(self.password)} chars")
-        # pref = raas_pref.preferences()
-        # preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]            
-        # preset.raas_da_password = self.password
 
-        bpy.context.scene.raas_session.paramiko_create_session(self.password)
+        bpy.context.scene.raas_session.paramiko_create_session(self.password, self.password_2fa)
 
         return {'FINISHED'}
 
@@ -780,7 +827,7 @@ def _ssh_sync(key_file, server, username, command):
 
 #     return str(stdout.decode())    
 
-def _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command):
+def _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, use_password_2fa, command):
         """ Execute an paramiko ssh command """
 
         import paramiko
@@ -788,7 +835,7 @@ def _paramiko_ssh(server, username, key_file, key_file_password, password, use_p
         #from base64 import b64decode
         #from scp import SCPClient
 
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
+        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password, use_password_2fa)
 
         #ssh = None
         result = None
@@ -835,9 +882,10 @@ async def ssh_command(server, command, preset):
     key_file_password = preset.raas_private_key_password
     password = preset.raas_da_password
     use_password = preset.raas_da_use_password
+    use_password_2fa = preset.raas_use_2FA
     
     if preset.raas_ssh_library == 'PARAMIKO':
-        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command)
+        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, use_password_2fa, command)
     else:
         return await _ssh_async(None, server, None, command)
 
@@ -853,9 +901,10 @@ def ssh_command_sync(server, command, preset):
     key_file_password = preset.raas_private_key_password
     password = preset.raas_da_password
     use_password = preset.raas_da_use_password
+    use_password_2fa = preset.raas_use_2FA
     
     if preset.raas_ssh_library == 'PARAMIKO':
-        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command)
+        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, use_password_2fa, command)
     else:
         return _ssh_sync(None, server, None, command)
                   
@@ -906,7 +955,7 @@ async def _scp_async(key_file, source, destination):
             else:
                 raise Exception("scp command failed: %s -> %s" % (source, destination))
 
-def _paramiko_put(server, username, key_file, key_file_password, password, use_password, source, destination):
+def _paramiko_put(server, username, key_file, key_file_password, password, use_password, use_password_2fa, source, destination):
         """ Execute an paramiko command """
 
         import paramiko
@@ -914,7 +963,7 @@ def _paramiko_put(server, username, key_file, key_file_password, password, use_p
         from base64 import b64decode
         from scp import SCPClient
 
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
+        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password, use_password_2fa)
 
         ssh = None
         scp = None
@@ -957,7 +1006,7 @@ def _paramiko_put(server, username, key_file, key_file_password, password, use_p
             raise Exception("paramiko command failed:  %s: %s" % (e.__class__, e))
 
 
-def _paramiko_get(server, username, key_file, key_file_password, password, use_password, source, destination):
+def _paramiko_get(server, username, key_file, key_file_password, password, use_password, use_password_2fa, source, destination):
         """ Execute an paramiko command """
 
         import paramiko
@@ -965,7 +1014,7 @@ def _paramiko_get(server, username, key_file, key_file_password, password, use_p
         from base64 import b64decode
         from scp import SCPClient
 
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
+        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password, use_password_2fa)
 
         ssh = None
         scp = None
@@ -1036,6 +1085,7 @@ async def transfer_files(context, fileTransfer, job_local_dir: str, job_remote_d
     key_file_password = preset.raas_private_key_password
     password = preset.raas_da_password
     use_password = preset.raas_da_use_password
+    use_password_2fa = preset.raas_use_2FA
 
     # check job_local_dir
     if to_cluster == False:
@@ -1048,13 +1098,13 @@ async def transfer_files(context, fileTransfer, job_local_dir: str, job_remote_d
             destination = '%s/%s' % (str(sharedBasepath), job_remote_dir)
             print('copy from %s to server' % (job_local_dir))
             #await _paramiko_put(pkey, serverHostname, username, password, source, destination)
-            await asyncio.to_thread(_paramiko_put, serverHostname, username, key_file, key_file_password, password, use_password, source, destination)
+            await asyncio.to_thread(_paramiko_put, serverHostname, username, key_file, key_file_password, password, use_password, use_password_2fa, source, destination)
         else:
             destination = job_local_dir
             source = '%s/%s' % (str(sharedBasepath), job_remote_dir)
             print('copy from server to: %s' % (job_local_dir))
             #await _paramiko_get(pkey, serverHostname, username, password, source, destination)
-            await asyncio.to_thread(_paramiko_get, serverHostname, username, key_file, key_file_password, password, use_password, source, destination)
+            await asyncio.to_thread(_paramiko_get, serverHostname, username, key_file, key_file_password, password, use_password, use_password_2fa, source, destination)
 
     else:       
         if to_cluster == True:

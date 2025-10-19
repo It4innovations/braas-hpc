@@ -577,6 +577,11 @@ class ClusterPresets(bpy.types.PropertyGroup):
         subtype='PASSWORD'
     ) # type: ignore
 
+    raas_use_2FA: bpy.props.BoolProperty(
+        name="Use 2FA",
+        default=False
+    ) # type: ignore    
+
     raas_ssh_library: EnumProperty(
         name='SSH Library',
         items=raas_config.ssh_library_items
@@ -960,7 +965,8 @@ class RaasPreferences(AddonPreferences):
             raas_pid = box_row.split(**factor(1.0), align=True)
             pid_box = raas_pid.column(align=True)
             pid_box.prop(preset, "raas_da_username")
-            pid_box.prop(preset, "raas_da_use_password")
+            pid_box.prop(preset, "raas_use_2FA")
+            pid_box.prop(preset, "raas_da_use_password")            
             
             if preset.raas_da_use_password:
                 pid_box.prop(preset, "raas_da_password")

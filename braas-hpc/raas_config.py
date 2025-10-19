@@ -31,6 +31,8 @@ Cluster_items_dict = {
     "MARENOSTRUM5ACC": "MareNostrum 5 ACC",
     "POLARIS": "Polaris",
     "AURORA": "Aurora",
+    "VISTA": "Vista",
+    "FRONTERA": "Frontera",
 }
 
 Cluster_items = [
@@ -42,6 +44,8 @@ Cluster_items = [
     ("MARENOSTRUM5ACC", "MareNostrum 5 ACC", ""),
     ("POLARIS", "Polaris", ""),
     ("AURORA", "Aurora", ""),
+    ("VISTA", "Vista", ""),
+    ("FRONTERA", "Frontera", ""),
 ]
 
 ## Partitions available on Barbora
@@ -132,6 +136,18 @@ Aurora_partitions = [
     ("debug", "debug", ""),
     ("debug-scaling", "debug-scaling", ""),
     ("prod", "prod", ""),
+]
+
+## Partitions available on VISTA
+Vista_partitions = [
+    ("gh", "gh", ""),
+    ("gh-dev", "gh-dev", ""),
+]
+
+Frontera_partitions = [
+    ("small", "small", ""),
+    ("development", "development", ""),
+    ("flex", "flex", ""),
 ]
 
 # -> JobTypes
@@ -289,6 +305,36 @@ async def CreateJob(context, token):
             elif 'ORIGWORKBENCH' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 81, 83), raas_jobs.JobTaskInfo(32, 81, 87), raas_jobs.JobTaskInfo(32, 81, 85), 2, 8)
 
+        elif blender_job_info_new.cluster_type == 'VISTA':    
+
+            if 'ORIGCPU' in job_type:
+                # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 90), raas_jobs.JobTaskInfo(72, 91, 91), raas_jobs.JobTaskInfo(72, 91, 92), 2, 9)
+        
+            elif 'ORIGGPU' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 93), raas_jobs.JobTaskInfo(72, 91, 94), raas_jobs.JobTaskInfo(72, 91, 95), 2, 9)
+
+            elif 'ORIGEEVEE' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 93), raas_jobs.JobTaskInfo(72, 91, 96), raas_jobs.JobTaskInfo(72, 91, 95), 2, 9)
+
+            elif 'ORIGWORKBENCH' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 93), raas_jobs.JobTaskInfo(72, 91, 97), raas_jobs.JobTaskInfo(72, 91, 95), 2, 9)
+
+        elif blender_job_info_new.cluster_type == 'FRONTERA':
+
+            if 'ORIGCPU' in job_type:
+                # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 100), raas_jobs.JobTaskInfo(32, 101, 101), raas_jobs.JobTaskInfo(32, 101, 102), 2, 10)
+        
+            elif 'ORIGGPU' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 103), raas_jobs.JobTaskInfo(32, 101, 104), raas_jobs.JobTaskInfo(32, 101, 105), 2, 10)
+
+            elif 'ORIGEEVEE' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 103), raas_jobs.JobTaskInfo(32, 101, 106), raas_jobs.JobTaskInfo(32, 101, 105), 2, 10)
+
+            elif 'ORIGWORKBENCH' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 103), raas_jobs.JobTaskInfo(32, 101, 107), raas_jobs.JobTaskInfo(32, 101, 105), 2, 10)
+
 
 ##################################################################
 def GetServer(pid):
@@ -320,6 +366,12 @@ def GetServerFromType(cluster_type):
     elif cluster_type == 'AURORA':
         return 'aurora.alcf.anl.gov'
     
+    elif cluster_type == 'VISTA':
+        return 'vista.tacc.utexas.edu'
+    
+    elif cluster_type == 'FRONTERA':
+        return 'frontera.tacc.utexas.edu'
+    
 def GetSchedulerFromContext(context):
     blender_job_info_new = context.scene.raas_blender_job_info_new
     cluster_type = blender_job_info_new.cluster_type
@@ -347,6 +399,12 @@ def GetSchedulerFromContext(context):
     
     elif cluster_type == 'AURORA':
         return 'PBS'
+    
+    elif cluster_type == 'VISTA':
+        return 'SLURM'
+    
+    elif cluster_type == 'FRONTERA':
+        return 'SLURM'
 
 def GetDAServer(context):
     blender_job_info_new = context.scene.raas_blender_job_info_new
@@ -385,7 +443,14 @@ def GetDAQueueMPIProcs(CommandTemplateId):
         return 4 # GPUs   
     # "AURORA": "Aurora",
     elif CommandTemplateId == 86:  
-        return 4 # GPUs   
+        return 4 # GPUs
+    # "VISTA": "Vista",
+    elif CommandTemplateId == 96:
+        return 1 # GPUs
+    # "FRONTERA": "Frontera",
+    elif CommandTemplateId == 106:
+        return 4 # GPUs
+
     else:
         return 0
 
@@ -595,6 +660,58 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 7:
             return 32,'~/braas-hpc/scripts/aurora-pbs/run_blender_workbench.sh'    
 
+    # "VISTA": "Vista",
+    elif ClusterId == 9:
+        if CommandTemplateId == 10 * ClusterId:
+            return 32,'~/braas-hpc/scripts/vista-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 1:
+            return 32,'~/braas-hpc/scripts/vista-slurm/run_blender_cpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 2:
+            return 32,'~/braas-hpc/scripts/vista-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 3:
+            return 32,'~/braas-hpc/scripts/vista-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 4:
+            return 32,'~/braas-hpc/scripts/vista-slurm/run_blender_gpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 5:
+            return 32,'~/braas-hpc/scripts/vista-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 6:
+            return 32,'~/braas-hpc/scripts/vista-slurm/run_blender_eevee.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 7:
+            return 32,'~/braas-hpc/scripts/vista-slurm/run_blender_workbench.sh' 
+        
+    # "FRONTERA": "Frontera",
+    elif ClusterId == 10:
+        if CommandTemplateId == 10 * ClusterId:
+            return 32,'~/bheappe/scripts/frontera-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 1:
+            return 32,'~/bheappe/scripts/frontera-slurm/run_blender_cpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 2:
+            return 32,'~/bheappe/scripts/frontera-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 3:
+            return 32,'~/bheappe/scripts/frontera-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 4:
+            return 32,'~/bheappe/scripts/frontera-slurm/run_blender_gpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 5:
+            return 32,'~/bheappe/scripts/frontera-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 6:
+            return 32,'~/bheappe/scripts/frontera-slurm/run_blender_eevee.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 7:
+            return 32,'~/bheappe/scripts/frontera-slurm/run_blender_workbench.sh'
+                
     else:
         return None, None
 
@@ -660,6 +777,12 @@ def GetPidDir(preset):
         preset.working_dir = "/grand/" + preset.allocation_name.lower() + "/" + preset.raas_da_username
     elif preset.cluster_name == "AURORA": # ugly but the code needs redesign
         preset.working_dir = "/lus/flare/projects/" + preset.allocation_name.lower() + "/" + preset.raas_da_username
+    elif preset.cluster_name == "VISTA" or preset.cluster_name == "FRONTERA":
+        cmd = 'echo $SCRATCH'
+        if len(cmd) > 0:
+            server = GetServerFromType(preset.cluster_name.upper())
+            res = raas_render.ssh_command_sync(server, cmd, preset)
+            preset.working_dir = res.strip()
     elif preset.cluster_name == "BARBORA" or preset.cluster_name == "KAROLINA":  # IT4I clusters only
         cmd = 'it4i-get-project-dir ' + preset.allocation_name.upper()
         if len(cmd) > 0:
