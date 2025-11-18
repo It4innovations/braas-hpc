@@ -2,12 +2,12 @@
 
 set +e
 ###############################################
+BLEND_FILE=$@
+###############################################
 if [ ${#work_dir} -ge 1  ]; then
   cd ${work_dir}
   mkdir -p job
   cd job
-
-  sacct --format=JobID%20,Jobname%50,state,Submit,start,end -j ${SLURM_JOBID} | grep -v "\." > ${work_dir}.job
 fi
 ###############################################
 ROOT_DIR=${PWD}/../
@@ -15,20 +15,22 @@ ROOT_DIR=${PWD}/../
 LOG_DIR=${ROOT_DIR}/log
 IN_DIR=${ROOT_DIR}/in
 OUT_DIR=${ROOT_DIR}/out
-INTERACTIVE_DIR=${ROOT_DIR}/interactive
+CACHE_DIR=${ROOT_DIR}/cache
 
-LOG=${LOG_DIR}/interactive.log
-ERR=${LOG_DIR}/interactive.err
+LOG=${LOG_DIR}/${FRAME}.log
+ERR=${LOG_DIR}/${FRAME}.err
+
 ###############################################
 
 mkdir -p ${LOG_DIR}
 mkdir -p ${IN_DIR}
 mkdir -p ${OUT_DIR}
-mkdir -p ${INTERACTIVE_DIR}
+mkdir -p ${CACHE_DIR}
 
 ###############################################
-hostname -s > ${INTERACTIVE_DIR}/hostname.txt
-echo "$@" -s > ${INTERACTIVE_DIR}/command.txt
+if [ ${#work_dir} -ge 1  ]; then
+  sacct --format=JobID%20,Jobname%50,state,Submit,start,end -j ${depends_on##* } > ${work_dir}.job
+fi
 ###############################################
-#$@
-sleep 172800
+
+
