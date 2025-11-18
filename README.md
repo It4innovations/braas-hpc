@@ -103,6 +103,7 @@ If some particular job from the list in the ***Jobs*** menu is selected, users c
 - **Spring**: [Youtube](https://www.youtube.com/watch?v=WhWc3b3KhnY&t=1s)
 - **Synthetic SEM image generator**: [GitLab](https://code.it4i.cz/SEM-Image/segment_sem_images_hctpm)
 - **Workflow for high-quality visualisation of large-scale CFD simulations by volume rendering**: [Paper](https://doi.org/10.1016/j.advengsoft.2024.103822), [Zenodo](https://zenodo.org/records/13639352)
+- **ELI Beamlines**:[9th Users’ Conference of IT4Innovations](https://events.it4i.cz/event/346/attachments/820/2889/01_Valenta_Petr_Machine-learning%20optimization%20of%20laser-driven%20electron%20accelerators.pdf)
 - ...
 
 
