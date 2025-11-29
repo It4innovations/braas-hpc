@@ -29,8 +29,12 @@ Cluster_items_dict = {
     "LEONARDO": "Leonardo",
     "MARENOSTRUM5GPP": "MareNostrum 5 GPP",
     "MARENOSTRUM5ACC": "MareNostrum 5 ACC",
+    "MARENOSTRUM5DATA": "MareNostrum 5 (Data Transfer)",
     "POLARIS": "Polaris",
     "AURORA": "Aurora",
+    "VISTA": "Vista",
+    "FRONTERA": "Frontera",
+    "CS": "IT4I Complementary Systems",
 }
 
 Cluster_items = [
@@ -40,8 +44,12 @@ Cluster_items = [
     ("LEONARDO", "Leonardo", ""),
     ("MARENOSTRUM5GPP", "MareNostrum 5 GPP", ""),
     ("MARENOSTRUM5ACC", "MareNostrum 5 ACC", ""),
+    ("MARENOSTRUM5DATA", "MareNostrum 5 (Data Transfer)", ""),
     ("POLARIS", "Polaris", ""),
     ("AURORA", "Aurora", ""),
+    ("VISTA", "Vista", ""),
+    ("FRONTERA", "Frontera", ""),
+    ("CS", "IT4I Complementary Systems", ""),
 ]
 
 ## Partitions available on Barbora
@@ -120,6 +128,9 @@ Marenostrum5acc_partitions = [
     ("acc_training", "acc_training", ""),
 ]
 
+Marenostrum5data_partitions = [
+]
+
 Polaris_partitions = [
     ("debug", "debug", ""),
     ("debug-scaling", "debug-scaling", ""),
@@ -134,27 +145,52 @@ Aurora_partitions = [
     ("prod", "prod", ""),
 ]
 
+## Partitions available on VISTA
+Vista_partitions = [
+    ("gh", "gh", ""),
+    ("gh-dev", "gh-dev", ""),
+]
+
+Frontera_partitions = [
+    ("small", "small", ""),
+    ("development", "development", ""),
+    ("flex", "flex", ""),
+]
+
+Cs_partitions = [  
+    ("p00-arm", "p00-arm", ""),
+    ("p01-arm", "p01-arm", ""),
+    ("p02-intel", "p02-intel", ""),
+    ("p03-amd", "p03-amd", ""),
+    ("p04-edge", "p04-edge", ""),
+    ("p05-synt", "p05-synt", ""),
+    ("p06-arm", "p06-arm", ""),
+    ("p07-power", "p07-power", ""),
+    ("p08-amd", "p08-amd", ""),
+    ("p10-intel", "p10-intel", ""),
+    ("p11-grace", "p11-grace", ""),
+]
+
 # -> JobTypes
 JobQueue_items = [
-    ("ORIGCPU", "CPU", ""),    
-    ("ORIGGPU", "GPU", ""),
-    ("ORIGEEVEE", "Eevee", ""),
-    ("ORIGWORKBENCH", "Workbench", ""),
+    ("JOB_CPU", "CPU", ""),    
+    ("JOB_GPU", "GPU", ""),
+
 ]
 
 JobQueue_items_dict = {
-    "ORIGCPU": "CPU",    
-    "ORIGGPU": "GPU",
-    "ORIGEEVEE": "Eevee",
-    "ORIGWORKBENCH" : "Workbench"
+    "JOB_CPU": "CPU",    
+    "JOB_GPU": "GPU",
+
 }
 
 from . import raas_jobs
-from . import raas_render
+from . import raas_connection
 ##################################################################
 ssh_library_items = [
-    ("PARAMIKO", "Paramiko", ""),    
+    ("PARAMIKO", "Paramiko", ""),
     ("SYSTEM", "System", ""),
+    ("ASYNCSSH", "AsyncSSH", ""),
 ]
 
 account_types_items = [
@@ -172,122 +208,104 @@ async def CreateJob(context, token):
 
         if blender_job_info_new.cluster_type == 'BARBORA':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(36, 11, 10), raas_jobs.JobTaskInfo(36, 11, 11), raas_jobs.JobTaskInfo(36, 11, 12), 2, 1)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(24, 12, 13), raas_jobs.JobTaskInfo(24, 12, 14), raas_jobs.JobTaskInfo(24, 12, 15), 2, 1)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(24, 12, 13), raas_jobs.JobTaskInfo(24, 12, 16), raas_jobs.JobTaskInfo(24, 12, 15), 2, 1)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(24, 12, 13), raas_jobs.JobTaskInfo(24, 12, 17), raas_jobs.JobTaskInfo(24, 12, 15), 2, 1)
 
         elif blender_job_info_new.cluster_type == 'KAROLINA':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 21, 20), raas_jobs.JobTaskInfo(128, 21, 21), raas_jobs.JobTaskInfo(128, 21, 22), 2, 2)                
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 22, 23), raas_jobs.JobTaskInfo(128, 22, 24), raas_jobs.JobTaskInfo(128, 22, 25), 2, 2)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 22, 23), raas_jobs.JobTaskInfo(128, 22, 26), raas_jobs.JobTaskInfo(128, 22, 25), 2, 2)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 22, 23), raas_jobs.JobTaskInfo(128, 22, 27), raas_jobs.JobTaskInfo(128, 22, 25), 2, 2)
 
         elif blender_job_info_new.cluster_type == 'LUMI':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 31, 30), raas_jobs.JobTaskInfo(128, 31, 31), raas_jobs.JobTaskInfo(128, 31, 32), 2, 3)                
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 32, 33), raas_jobs.JobTaskInfo(128, 32, 34), raas_jobs.JobTaskInfo(128, 32, 35), 2, 3)                               
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 32, 33), raas_jobs.JobTaskInfo(128, 32, 36), raas_jobs.JobTaskInfo(128, 32, 35), 2, 3)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(128, 32, 33), raas_jobs.JobTaskInfo(128, 32, 37), raas_jobs.JobTaskInfo(128, 32, 35), 2, 3)
 
 
         elif blender_job_info_new.cluster_type == 'LEONARDO':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 41, 40), raas_jobs.JobTaskInfo(32, 41, 41), raas_jobs.JobTaskInfo(32, 41, 42), 2, 4)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 41, 43), raas_jobs.JobTaskInfo(32, 41, 44), raas_jobs.JobTaskInfo(32, 41, 45), 2, 4)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 41, 43), raas_jobs.JobTaskInfo(32, 41, 46), raas_jobs.JobTaskInfo(32, 41, 45), 2, 4)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 41, 43), raas_jobs.JobTaskInfo(32, 41, 47), raas_jobs.JobTaskInfo(32, 41, 45), 2, 4)
 
         elif blender_job_info_new.cluster_type == 'MARENOSTRUM5GPP':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 51, 50), raas_jobs.JobTaskInfo(32, 51, 51), raas_jobs.JobTaskInfo(32, 51, 52), 2, 5)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 51, 53), raas_jobs.JobTaskInfo(32, 51, 54), raas_jobs.JobTaskInfo(32, 51, 55), 2, 5)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 51, 53), raas_jobs.JobTaskInfo(32, 51, 56), raas_jobs.JobTaskInfo(32, 51, 55), 2, 5)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 51, 53), raas_jobs.JobTaskInfo(32, 51, 57), raas_jobs.JobTaskInfo(32, 51, 55), 2, 5)
 
         elif blender_job_info_new.cluster_type == 'MARENOSTRUM5ACC':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 61, 60), raas_jobs.JobTaskInfo(32, 61, 61), raas_jobs.JobTaskInfo(32, 61, 62), 2, 6)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 61, 63), raas_jobs.JobTaskInfo(32, 61, 64), raas_jobs.JobTaskInfo(32, 61, 65), 2, 6)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 61, 63), raas_jobs.JobTaskInfo(32, 61, 66), raas_jobs.JobTaskInfo(32, 61, 65), 2, 6)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 61, 63), raas_jobs.JobTaskInfo(32, 61, 67), raas_jobs.JobTaskInfo(32, 61, 65), 2, 6)
 
         elif blender_job_info_new.cluster_type == 'POLARIS':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 70), raas_jobs.JobTaskInfo(64, 71, 71), raas_jobs.JobTaskInfo(64, 71, 72), 2, 7)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 73), raas_jobs.JobTaskInfo(64, 71, 74), raas_jobs.JobTaskInfo(64, 71, 75), 2, 7)
-
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 73), raas_jobs.JobTaskInfo(64, 71, 76), raas_jobs.JobTaskInfo(64, 71, 75), 2, 7)
-
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 73), raas_jobs.JobTaskInfo(64, 71, 77), raas_jobs.JobTaskInfo(64, 71, 75), 2, 7)
 
         elif blender_job_info_new.cluster_type == 'AURORA':    
 
-            if 'ORIGCPU' in job_type:
+            if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 81, 80), raas_jobs.JobTaskInfo(32, 81, 81), raas_jobs.JobTaskInfo(32, 81, 82), 2, 8)
         
-            elif 'ORIGGPU' in job_type:
+            elif 'JOB_GPU' in job_type:
                 await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 81, 83), raas_jobs.JobTaskInfo(32, 81, 84), raas_jobs.JobTaskInfo(32, 81, 85), 2, 8)
 
-            elif 'ORIGEEVEE' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 81, 83), raas_jobs.JobTaskInfo(32, 81, 86), raas_jobs.JobTaskInfo(32, 81, 85), 2, 8)
 
-            elif 'ORIGWORKBENCH' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 81, 83), raas_jobs.JobTaskInfo(32, 81, 87), raas_jobs.JobTaskInfo(32, 81, 85), 2, 8)
+        elif blender_job_info_new.cluster_type == 'VISTA':    
+
+            if 'JOB_CPU' in job_type:
+                # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 90), raas_jobs.JobTaskInfo(72, 91, 91), raas_jobs.JobTaskInfo(72, 91, 92), 2, 9)
+        
+            elif 'JOB_GPU' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(72, 91, 93), raas_jobs.JobTaskInfo(72, 91, 94), raas_jobs.JobTaskInfo(72, 91, 95), 2, 9)
+
+
+        elif blender_job_info_new.cluster_type == 'FRONTERA':
+
+            if 'JOB_CPU' in job_type:
+                # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 100), raas_jobs.JobTaskInfo(32, 101, 101), raas_jobs.JobTaskInfo(32, 101, 102), 2, 10)
+        
+            elif 'JOB_GPU' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 101, 103), raas_jobs.JobTaskInfo(32, 101, 104), raas_jobs.JobTaskInfo(32, 101, 105), 2, 10)
+
+
+        elif blender_job_info_new.cluster_type == 'CS':
+
+            if 'JOB_CPU' in job_type:
+                # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 111, 110), raas_jobs.JobTaskInfo(32, 111, 111), raas_jobs.JobTaskInfo(32, 111, 112), 2, 11)
+        
+            elif 'JOB_GPU' in job_type:
+                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(32, 111, 113), raas_jobs.JobTaskInfo(32, 111, 114), raas_jobs.JobTaskInfo(32, 111, 115), 2, 11)
 
 
 ##################################################################
@@ -309,16 +327,28 @@ def GetServerFromType(cluster_type):
         return 'login.leonardo.cineca.it'
     
     elif cluster_type == 'MARENOSTRUM5GPP':
-        return 'glogin1.bsc.es'
+        return 'glogin2.bsc.es'
 
     elif cluster_type == 'MARENOSTRUM5ACC':
-        return 'alogin1.bsc.es'
+        return 'alogin2.bsc.es'
+    
+    elif cluster_type == 'MARENOSTRUM5DATA':
+        return 'transfer2.bsc.es'
 
     elif cluster_type == 'POLARIS':
         return 'polaris.alcf.anl.gov'
     
     elif cluster_type == 'AURORA':
         return 'aurora.alcf.anl.gov'
+    
+    elif cluster_type == 'VISTA':
+        return 'vista.tacc.utexas.edu'
+    
+    elif cluster_type == 'FRONTERA':
+        return 'frontera.tacc.utexas.edu'
+    
+    elif cluster_type == 'CS':
+        return 'login.cs.it4i.cz'    
     
 def GetSchedulerFromContext(context):
     blender_job_info_new = context.scene.raas_blender_job_info_new
@@ -341,12 +371,24 @@ def GetSchedulerFromContext(context):
 
     elif cluster_type == 'MARENOSTRUM5ACC':
         return 'SLURM'
+    
+    elif cluster_type == 'MARENOSTRUM5DATA':
+        return 'NONE'
 
     elif cluster_type == 'POLARIS':
         return 'PBS'
     
     elif cluster_type == 'AURORA':
         return 'PBS'
+    
+    elif cluster_type == 'VISTA':
+        return 'SLURM'
+    
+    elif cluster_type == 'FRONTERA':
+        return 'SLURM'
+    
+    elif cluster_type == 'CS':
+        return 'SLURM'    
 
 def GetDAServer(context):
     blender_job_info_new = context.scene.raas_blender_job_info_new
@@ -385,7 +427,16 @@ def GetDAQueueMPIProcs(CommandTemplateId):
         return 4 # GPUs   
     # "AURORA": "Aurora",
     elif CommandTemplateId == 86:  
-        return 4 # GPUs   
+        return 4 # GPUs
+    # "VISTA": "Vista",
+    elif CommandTemplateId == 96:
+        return 1 # GPUs
+    # "FRONTERA": "Frontera",
+    elif CommandTemplateId == 106:
+        return 4 # GPUs    
+    elif CommandTemplateId == 116:
+        return 2 # GPUs
+
     else:
         return 0
 
@@ -411,13 +462,8 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
 
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 24,'~/braas-hpc/scripts/barbora-slurm/job_finish.sh'
+        
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 24,'~/braas-hpc/scripts/barbora-slurm/run_blender_eevee.sh'
-        
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 24,'~/braas-hpc/scripts/barbora-slurm/run_blender_workbench.sh'        
-        
     # KAROLINA
     elif ClusterId == 2:     
         if CommandTemplateId == 10 * ClusterId:
@@ -438,11 +484,7 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 128,'~/braas-hpc/scripts/karolina-slurm/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 128,'~/braas-hpc/scripts/karolina-slurm/run_blender_eevee.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 128,'~/braas-hpc/scripts/karolina-slurm/run_blender_workbench.sh'                                 
+                               
     # LUMI
     elif ClusterId == 3:     
         if CommandTemplateId == 10 * ClusterId:
@@ -463,11 +505,7 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 128,'~/braas-hpc/scripts/lumi-slurm/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 128,'~/braas-hpc/scripts/lumi-slurm/run_blender_eevee.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 128,'~/braas-hpc/scripts/lumi-slurm/run_blender_workbench.sh'
     # LEONARDO
     elif ClusterId == 4:
         if CommandTemplateId == 10 * ClusterId:
@@ -487,12 +525,6 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
 
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 32,'~/braas-hpc/scripts/leonardo-slurm/job_finish.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 32,'~/braas-hpc/scripts/leonardo-slurm/run_blender_eevee.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 32,'~/braas-hpc/scripts/leonardo-slurm/run_blender_workbench.sh'
         
     # "MARENOSTRUM5GPP": "MareNostrum 5 GPP",
     elif ClusterId == 5:
@@ -514,11 +546,6 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 32,'~/braas-hpc/scripts/marenostrum5gpp-slurm/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 32,'~/braas-hpc/scripts/marenostrum5gpp-slurm/run_blender_eevee.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 32,'~/braas-hpc/scripts/marenostrum5gpp-slurm/run_blender_workbench.sh'    
     # "MARENOSTRUM5ACC": "MareNostrum 5 ACC",
     elif ClusterId == 6:
         if CommandTemplateId == 10 * ClusterId:
@@ -539,11 +566,6 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 32,'~/braas-hpc/scripts/marenostrum5acc-slurm/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 32,'~/braas-hpc/scripts/marenostrum5acc-slurm/run_blender_eevee.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 32,'~/braas-hpc/scripts/marenostrum5acc-slurm/run_blender_workbench.sh'    
     # "POLARIS": "Polaris",
     elif ClusterId == 7:
         if CommandTemplateId == 10 * ClusterId:
@@ -564,11 +586,6 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 64,'~/braas-hpc/scripts/polaris-pbs/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 64,'~/braas-hpc/scripts/polaris-pbs/run_blender_eevee.sh'
-
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 64,'~/braas-hpc/scripts/polaris-pbs/run_blender_workbench.sh'    
     # "AURORA": "Aurora",
     elif ClusterId == 8:
         if CommandTemplateId == 10 * ClusterId:
@@ -589,12 +606,66 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
         elif CommandTemplateId == 10 * ClusterId + 5:
             return 32,'~/braas-hpc/scripts/aurora-pbs/job_finish.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 6:
-            return 32,'~/braas-hpc/scripts/aurora-pbs/run_blender_eevee.sh'
+    # "VISTA": "Vista",
+    elif ClusterId == 9:
+        if CommandTemplateId == 10 * ClusterId:
+            return 72,'~/braas-hpc/scripts/vista-slurm/job_init.sh'
 
-        elif CommandTemplateId == 10 * ClusterId + 7:
-            return 32,'~/braas-hpc/scripts/aurora-pbs/run_blender_workbench.sh'    
+        elif CommandTemplateId == 10 * ClusterId + 1:
+            return 72,'~/braas-hpc/scripts/vista-slurm/run_blender_cpu.sh'
 
+        elif CommandTemplateId == 10 * ClusterId + 2:
+            return 72,'~/braas-hpc/scripts/vista-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 3:
+            return 72,'~/braas-hpc/scripts/vista-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 4:
+            return 72,'~/braas-hpc/scripts/vista-slurm/run_blender_gpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 5:
+            return 72,'~/braas-hpc/scripts/vista-slurm/job_finish.sh'
+        
+    # "FRONTERA": "Frontera",
+    elif ClusterId == 10:
+        if CommandTemplateId == 10 * ClusterId:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 1:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/run_blender_cpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 2:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 3:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 4:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/run_blender_gpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 5:
+            return 32,'~/braas-hpc/scripts/frontera-slurm/job_finish.sh'
+        
+    # "CS": "CS",
+    elif ClusterId == 11:
+        if CommandTemplateId == 10 * ClusterId:
+            return 32,'~/braas-hpc/scripts/cs-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 1:
+            return 32,'~/braas-hpc/scripts/cs-slurm/run_blender_cpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 2:
+            return 32,'~/braas-hpc/scripts/cs-slurm/job_finish.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 3:
+            return 32,'~/braas-hpc/scripts/cs-slurm/job_init.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 4:
+            return 32,'~/braas-hpc/scripts/cs-slurm/run_blender_gpu.sh'
+
+        elif CommandTemplateId == 10 * ClusterId + 5:
+            return 32,'~/braas-hpc/scripts/cs-slurm/job_finish.sh'
+                
     else:
         return None, None
 
@@ -654,17 +725,23 @@ def GetPidDir(preset):
         preset.working_dir = "/scratch/" + preset.allocation_name
     elif preset.cluster_name == "LEONARDO": # ugly but the code needs redesign
         preset.working_dir = "/leonardo_scratch/fast/" + preset.allocation_name
-    elif preset.cluster_name == "MARENOSTRUM5GPP" or preset.cluster_name == "MARENOSTRUM5ACC": # ugly but the code needs redesign
+    elif preset.cluster_name == "MARENOSTRUM5GPP" or preset.cluster_name == "MARENOSTRUM5ACC" or preset.cluster_name == "MARENOSTRUM5DATA": # ugly but the code needs redesign
         preset.working_dir = "/gpfs/scratch/" + preset.allocation_name.lower() + "/" + preset.raas_da_username
     elif preset.cluster_name == "POLARIS": # ugly but the code needs redesign
         preset.working_dir = "/grand/" + preset.allocation_name.lower() + "/" + preset.raas_da_username
     elif preset.cluster_name == "AURORA": # ugly but the code needs redesign
         preset.working_dir = "/lus/flare/projects/" + preset.allocation_name.lower() + "/" + preset.raas_da_username
-    elif preset.cluster_name == "BARBORA" or preset.cluster_name == "KAROLINA":  # IT4I clusters only
+    elif preset.cluster_name == "VISTA" or preset.cluster_name == "FRONTERA":
+        cmd = 'echo $SCRATCH'
+        if len(cmd) > 0:
+            server = GetServerFromType(preset.cluster_name.upper())
+            res = raas_connection.ssh_command_sync(server, cmd, preset)
+            preset.working_dir = res.strip()
+    elif preset.cluster_name == "BARBORA" or preset.cluster_name == "KAROLINA" or preset.cluster_name == "CS":  # IT4I clusters only
         cmd = 'it4i-get-project-dir ' + preset.allocation_name.upper()
         if len(cmd) > 0:
             server = GetServerFromType(preset.cluster_name.upper())
-            res = raas_render.ssh_command_sync(server, cmd, preset)
+            res = raas_connection.ssh_command_sync(server, cmd, preset)
             preset.working_dir = res.strip()
 
     else:

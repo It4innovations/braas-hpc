@@ -41,6 +41,7 @@ from . import raas_server
 from . import raas_pref
 from . import raas_jobs
 from . import raas_config
+from . import raas_connection
 
 import pathlib
 import json
@@ -63,107 +64,6 @@ def redraw(self, context):
 
 #     #self.report({type}, message)
 
-################################    
-
-def get_cluster_presets():
-    presets = []  # to be returned in EnumProperty
-    for preset in raas_pref.preferences().cluster_presets:
-        presets.append(('%s, %s, %s' % (preset.cluster_name, preset.allocation_name, preset.partition_name), '', ''))
-    return presets
-
-def get_pref_storage_dir():
-    pref = raas_pref.preferences()
-    return pref.raas_job_storage_path
-
-def get_ssh_key_file():
-    ssh_key_local = Path(tempfile.gettempdir()) / 'server_key'
-    return ssh_key_local 
-
-def get_job_local_storage(job_name):
-    local_storage = Path(get_pref_storage_dir()) / job_name
-    return local_storage     
-
-def get_job_local_storage_in(job_name):
-    local_storage_in = Path(get_pref_storage_dir()) / job_name / 'in'
-    return local_storage_in    
-
-def get_job_local_storage_out(job_name):
-    local_storage_out = Path(get_pref_storage_dir()) / job_name / 'out'
-    return local_storage_out  
-
-def get_job_local_storage_log(job_name):
-    local_storage_log = Path(get_pref_storage_dir()) / job_name / 'log'
-    return local_storage_log     
-
-def get_job_remote_storage_in(job_name):
-    remote_storage_in = Path('in')
-    return remote_storage_in   
-
-def get_job_remote_storage(job_name):
-    remote_storage_out = Path('.')
-    return remote_storage_out
-
-def get_job_remote_storage_out(job_name):
-    remote_storage_out = Path('out')
-    return remote_storage_out
-
-def get_job_remote_storage_log(job_name):
-    remote_storage_log = Path('log')
-    return remote_storage_log    
-
-def convert_path_to_linux(path)->str:
-    p = str(path)
-    return p.replace("\\","/")
-
-def get_blendfile_fullpath(context):
-    path = bpy.path.abspath(context.scene.raas_blender_job_info_new.blendfile_dir) + '/' \
-        + context.scene.raas_blender_job_info_new.blendfile
-    return path
-
-def is_verbose_debug():
-    import bpy
-    return bpy.app.debug_value == 256
-
-def get_project_group(context):
-    pref = raas_pref.preferences()
-    project_group = pref.raas_project_group
-    if len(project_group) == 0:
-        if context.scene.raas_cluster_presets_index > -1 and len(pref.cluster_presets) > 0:
-            preset = pref.cluster_presets[context.scene.raas_cluster_presets_index]
-            project_group = preset.raas_da_username
-
-    if len(project_group) == 0:
-        import getpass        
-        project_group = getpass.getuser()
-
-    if len(pref.raas_project_group) == 0:
-        pref.raas_project_group = project_group
-
-    return project_group
-
-def get_direct_access_remote_storage(context):
-    pref = raas_pref.preferences()
-    project_group = get_project_group(context)
-
-    pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-        context, raas_pref.preferences())
-
-    return raas_config.GetDAClusterPath(context, pid_dir, pid_name.lower()) \
-        + '/' + project_group + '/' + context.scene.raas_blender_job_info_new.cluster_type.lower()
-
-# def get_project_group_path(context):
-#     pref = raas_pref.preferences()
-#     project_group = get_project_group(context)
-
-#     pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-#         context, raas_pref.preferences())
-
-#     return raas_config.GetDAClusterPath(context, pid_dir, pid_name.lower()) \
-#         + '/' + project_group
-
-def CmdCreateProjectGroupFolder(context):
-    cmd = 'mkdir -p ' + get_direct_access_remote_storage(context)
-    return cmd
 ################################
 
 class RaasButtonsPanel:
@@ -173,7 +73,7 @@ class RaasButtonsPanel:
 
     @classmethod
     def poll(cls, context):
-        return context.engine == 'CYCLES'
+        return context.engine == 'CYCLES' or context.engine == 'BRAAS_HPC'
 
 class RAAS_PT_simplify(RaasButtonsPanel, Panel):
     bl_label = "BRaaS-HPC"
@@ -209,7 +109,7 @@ class RAAS_PT_simplify(RaasButtonsPanel, Panel):
         if context.scene.raas_cluster_presets_index > -1 and len(pref.cluster_presets) > 0:
             preset = pref.cluster_presets[context.scene.raas_cluster_presets_index]
 
-            if preset.raas_ssh_library == 'PARAMIKO':
+            if preset.raas_ssh_library == 'ASYNCSSH' or preset.raas_ssh_library == 'PARAMIKO':
                     if len(preset.raas_da_username) == 0 \
                         or not pref.raas_scripts_installed or len(pref.cluster_presets) < 1:
                         box.label(text='BRaaS-HPC is not set in preferences', icon='ERROR')
@@ -317,50 +217,50 @@ def clear_jobs_list(self, context):
 
 class RAAS_PG_BlenderJobInfo(PropertyGroup):
 
-    job_name : bpy.props.StringProperty(name="JobName")
-    job_email : bpy.props.StringProperty(name="Email")
-    job_project : bpy.props.StringProperty(name="Project Name",maxlen=25)
-    job_walltime : bpy.props.IntProperty(name="Walltime [minutes]",default=30,min=1,max=2880)
-    job_walltime_pre : bpy.props.IntProperty(name="Walltime Preprocessing [minutes]",default=10,min=1,max=2880)
-    job_walltime_post : bpy.props.IntProperty(name="Walltime Postprocessing [minutes]",default=10,min=1,max=2880)    
-    #job_nodes : bpy.props.IntProperty(name="Nodes",default=1,min=1,max=8)
-    max_jobs : bpy.props.IntProperty(name="Max Jobs",default=100,min=1,max=10000)
-    job_arrays : bpy.props.StringProperty(name="Job arrays", default='')
+    job_name : bpy.props.StringProperty(name="JobName") # type: ignore
+    job_email : bpy.props.StringProperty(name="Email") # type: ignore
+    job_project : bpy.props.StringProperty(name="Project Name",maxlen=25) # type: ignore
+    job_walltime : bpy.props.IntProperty(name="Walltime [minutes]",default=30,min=1,max=2880)# type: ignore
+    job_walltime_pre : bpy.props.IntProperty(name="Walltime Preprocessing [minutes]",default=10,min=1,max=2880) # type: ignore
+    job_walltime_post : bpy.props.IntProperty(name="Walltime Postprocessing [minutes]",default=10,min=1,max=2880) # type: ignore
+    #job_nodes : bpy.props.IntProperty(name="Nodes",default=1,min=1,max=8)  # type: ignore
+    max_jobs : bpy.props.IntProperty(name="Max Jobs",default=100,min=1,max=10000)  # type: ignore
+    job_arrays : bpy.props.StringProperty(name="Job arrays", default='')  # type: ignore
 
-    job_type : bpy.props.EnumProperty(items=raas_config.JobQueue_items,name="Type of Job (resources)")
-    job_remote_dir : bpy.props.StringProperty(name="Remote directory", options={'TEXTEDIT_UPDATE'})
-    job_allocation : bpy.props.StringProperty(name="Allocation project name")  
-    job_partition : bpy.props.StringProperty(name="Queue/Partition name") 
+    job_type : bpy.props.EnumProperty(items=raas_config.JobQueue_items,name="Type of Job (resources)")  # type: ignore
+    job_remote_dir : bpy.props.StringProperty(name="Remote directory", options={'TEXTEDIT_UPDATE'})  # type: ignore
+    job_allocation : bpy.props.StringProperty(name="Allocation project name") # type: ignore
+    job_partition : bpy.props.StringProperty(name="Queue/Partition name")  # type: ignore
 
-    frame_start : bpy.props.IntProperty(name="FrameStart")
-    frame_end : bpy.props.IntProperty(name="FrameEnd")
-    frame_current : bpy.props.IntProperty(name="FrameCurrent")
-    #frame_step : bpy.props.IntProperty(name="FrameStep")
+    frame_start : bpy.props.IntProperty(name="FrameStart") # type: ignore
+    frame_end : bpy.props.IntProperty(name="FrameEnd") # type: ignore
+    frame_current : bpy.props.IntProperty(name="FrameCurrent") # type: ignore
+    #frame_step : bpy.props.IntProperty(name="FrameStep") # type: ignore
 
-    render_type : bpy.props.EnumProperty(items=RenderType_items,name="Type")  
-    cluster_type : bpy.props.EnumProperty(items=raas_config.Cluster_items,name="Cluster", update=clear_jobs_list)
-    file_type : bpy.props.EnumProperty(items=FileType_items,name="File")    
-    blendfile_dir : bpy.props.StringProperty(name="Dir", subtype='DIR_PATH', update=set_blendfile_dir)
-    blendfile : bpy.props.StringProperty(name="Blend", default='')
+    render_type : bpy.props.EnumProperty(items=RenderType_items,name="Type") # type: ignore
+    cluster_type : bpy.props.EnumProperty(items=raas_config.Cluster_items,name="Cluster", update=clear_jobs_list) # type: ignore
+    file_type : bpy.props.EnumProperty(items=FileType_items,name="File") # type: ignore
+    blendfile_dir : bpy.props.StringProperty(name="Dir", subtype='DIR_PATH', update=set_blendfile_dir) # type: ignore
+    blendfile : bpy.props.StringProperty(name="Blend", default='') # type: ignore
 
 class RAAS_PG_SubmittedTaskInfoExt(PropertyGroup):
-    Id : bpy.props.IntProperty(name="Id")
-    Name : bpy.props.StringProperty(name="Name")    
+    Id : bpy.props.IntProperty(name="Id") # type: ignore
+    Name : bpy.props.StringProperty(name="Name") # type: ignore 
 
 class RAAS_PG_SubmittedJobInfoExt(PropertyGroup):
-    Id : bpy.props.IntProperty(name="Id")
-    Name : bpy.props.StringProperty(name="Name")
-    State : bpy.props.EnumProperty(items=JobStateExt_items,name="State")
-    Priority : bpy.props.EnumProperty(items=JobPriorityExt_items,name="Priority",default='AVERAGE')
-    Project : bpy.props.StringProperty(name="Project Name")
-    CreationTime : bpy.props.StringProperty(name="Creation Time")
-    SubmitTime : bpy.props.StringProperty(name="Submit Time")
-    StartTime : bpy.props.StringProperty(name="Start Time")
-    EndTime : bpy.props.StringProperty(name="End Time")
-    TotalAllocatedTime : bpy.props.FloatProperty(name="totalAllocatedTime")
-    AllParameters : bpy.props.StringProperty(name="allParameters")
-    Tasks: bpy.props.StringProperty(name="Tasks")
-    ClusterName: bpy.props.StringProperty(name="Cluster Name")
+    Id : bpy.props.IntProperty(name="Id") # type: ignore
+    Name : bpy.props.StringProperty(name="Name") # type: ignore
+    State : bpy.props.EnumProperty(items=JobStateExt_items,name="State") # type: ignore
+    Priority : bpy.props.EnumProperty(items=JobPriorityExt_items,name="Priority",default='AVERAGE') # type: ignore
+    Project : bpy.props.StringProperty(name="Project Name") # type: ignore
+    CreationTime : bpy.props.StringProperty(name="Creation Time") # type: ignore
+    SubmitTime : bpy.props.StringProperty(name="Submit Time") # type: ignore
+    StartTime : bpy.props.StringProperty(name="Start Time") # type: ignore
+    EndTime : bpy.props.StringProperty(name="End Time") # type: ignore
+    TotalAllocatedTime : bpy.props.FloatProperty(name="totalAllocatedTime") # type: ignore
+    AllParameters : bpy.props.StringProperty(name="allParameters") # type: ignore
+    Tasks: bpy.props.StringProperty(name="Tasks") # type: ignore
+    ClusterName: bpy.props.StringProperty(name="Cluster Name") # type: ignore
 
     #statePre : bpy.props.StringProperty(name="State Pre")
     #stateRen : bpy.props.StringProperty(name="State Ren")
@@ -396,157 +296,6 @@ class RAAS_UL_SubmittedJobInfoExt(bpy.types.UIList):
                                         items, "Name", reverse=False)
 
         return filtered, ordered             
-        
-
-#############################################################################
-class RaasSession:
-    def __init__(self):
-        self.paramiko_ssh_clients = {}
-
-        self.server = None
-        self.username = None
-        self.key_file = None
-        self.key_file_password = None
-        self.password = None 
-        self.use_password = None
-
-    def paramiko_is_alive(self, server=None):
-        """Check if SSH connection is alive for a specific server"""
-        if server is None:
-            server = self.server
-            
-        if server not in self.paramiko_ssh_clients:
-            return False
-            
-        ssh_client = self.paramiko_ssh_clients[server]
-        if ssh_client is None:
-            return False
-
-        transport = ssh_client.get_transport()
-        if transport is None:
-            return False
-
-        return transport.is_active()
-    
-    def paramiko_close(self, server=None):
-        """Close SSH connection for a specific server or all servers"""
-        if server is None:
-            # Close all connections
-            for srv, ssh_client in self.paramiko_ssh_clients.items():
-                if ssh_client is not None:
-                    ssh_client.close()
-            self.paramiko_ssh_clients.clear()
-        else:
-            # Close specific server connection
-            if server in self.paramiko_ssh_clients:
-                ssh_client = self.paramiko_ssh_clients[server]
-                if ssh_client is not None:
-                    ssh_client.close()
-                del self.paramiko_ssh_clients[server]
-
-    def paramiko_get_ssh(self, server=None):
-        """Get SSH client for a specific server"""
-        if server is None:
-            server = self.server
-            
-        return self.paramiko_ssh_clients.get(server)
-    
-    def paramiko_set_ssh(self, ssh, server=None):
-        """Set SSH client for a specific server"""
-        if server is None:
-            server = self.server
-            
-        self.paramiko_ssh_clients[server] = ssh
-
-    def check_password(self):
-        if self.use_password:
-            return not self.password is None and len(self.password) > 0
-        else:
-            return not self.key_file_password is None and len(self.key_file_password) > 0
-
-    def paramiko_create_session(self, password):
-        import paramiko
-
-        # pref = raas_pref.preferences()
-        # preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]    
-            
-        # key_file = preset.raas_private_key_path
-        # username = preset.raas_da_username
-        # password = preset.raas_private_key_password
-
-        if not password is None:
-            if self.use_password:
-                self.password = password
-            else:
-                self.key_file_password = password
-
-        ssh = None
-        try: 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.load_system_host_keys()
-
-            if self.use_password:
-                # Connect with username + password
-                ssh.connect(
-                    hostname=self.server,
-                    username=self.username,
-                    password=self.password,   # <-- instead of pkey
-                    look_for_keys=False,      # don’t try ~/.ssh/id_rsa
-                    allow_agent=False         # don’t use ssh-agent
-                )                
-            else:                
-                # try:
-                #     key = paramiko.RSAKey.from_private_key_file(self.key_file, self.key_file_password)
-                # except:
-                #     key = paramiko.Ed25519Key.from_private_key_file(self.key_file, self.key_file_password)
-                from io import StringIO
-                try:
-                    #key = paramiko.RSAKey.from_private_key_file(key_file, password)
-
-                    if self.key_file_password is None or len(self.key_file_password) == 0:
-                        key = paramiko.RSAKey.from_private_key_file(self.key_file)
-                    else:
-                        key = paramiko.RSAKey.from_private_key_file(self.key_file, self.key_file_password)
-
-                except Exception as e:
-                    #key = paramiko.Ed25519Key.from_private_key_file(key_file, password)                
-                    if self.key_file_password is None or len(self.key_file_password) == 0:
-                        key = paramiko.Ed25519Key.from_private_key_file(self.key_file)
-                    else:
-                        key = paramiko.Ed25519Key.from_private_key_file(self.key_file, self.key_file_password)                
-
-                ssh.connect(self.server, username=self.username, pkey=key)
-
-            ssh.get_transport().set_keepalive(30)  # send keepalive every 30s
-
-            # Store the SSH client in the dict with server as key
-            self.paramiko_ssh_clients[self.server] = ssh
-
-        except Exception as e:
-            self.paramiko_ssh_clients[self.server] = None
-
-            if ssh is not None:
-                ssh.close()           
-
-            raise Exception("paramiko ssh command failed:  %s: %s" % (e.__class__, e))
-        
-    def show_dialog(self, server, username, key_file, key_file_password, password, use_password):
-        if not self.paramiko_is_alive(server):
-            self.paramiko_close(server)
-
-            self.server = server
-            self.username = username
-            self.key_file = key_file
-            self.key_file_password = key_file_password
-            self.password = password
-            self.use_password = use_password
-
-            if self.check_password():
-                self.paramiko_create_session(None)
-            else:
-                bpy.ops.wm.raas_password_input('INVOKE_DEFAULT')
-                raise Exception("Password required")
 
 class RAAS_PASSWORD_OT_input(bpy.types.Operator):
     bl_idname = "wm.raas_password_input"
@@ -558,6 +307,12 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         subtype='PASSWORD'  # <-- masks input in Blender 3.2+
     ) # type: ignore
 
+    password_2fa: bpy.props.StringProperty(
+        name="2FA Code",
+        description="Enter your 2FA code",
+        subtype='PASSWORD'  # <-- masks input in Blender 3.2+
+    ) # type: ignore    
+
     server: bpy.props.StringProperty(
         name="Server"
     ) # type: ignore    
@@ -566,15 +321,6 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         layout = self.layout
 
         box = layout
-
-        # raas_box = box.column()
-        # path_split = raas_box.split(**raas_pref.factor(0.25), align=True)
-        # path_split.label(text='Local Storage Path:')
-        # path_box = path_split.row(align=True)
-        # path_box.prop(self, 'raas_job_storage_path', text='')
-        # props = path_box.operator(
-        #     'raas.explore_file_path', text='', icon='DISK_DRIVE')
-        # props.path = self.raas_job_storage_path
 
         # Display server name
         session = context.scene.raas_session
@@ -593,491 +339,46 @@ class RAAS_PASSWORD_OT_input(bpy.types.Operator):
         box1_row = box1.row(align=True)
         box1_row.prop(self, 'password', text='')
 
+        box2 = box.split(**raas_pref.factor(0.25), align=True)
+        box2.label(text='2FA Code:')
+        box2_row = box2.row(align=True)
+        box2_row.prop(self, 'password_2fa', text='')
+
     def execute(self, context):
         self.report({'INFO'}, f"Password entered (hidden): {len(self.password)} chars")
-        # pref = raas_pref.preferences()
-        # preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]            
-        # preset.raas_da_password = self.password
 
-        bpy.context.scene.raas_session.paramiko_create_session(self.password)
+        session = context.scene.raas_session
+        client_type = session.ssh_client_type
+        
+        if client_type == 'PARAMIKO':
+            session.paramiko_create_session(self.password, self.password_2fa)
+        elif client_type == 'ASYNCSSH':
+            # For AsyncSSH, we need to run the async method
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # If loop is running, schedule the coroutine
+                    future = asyncio.ensure_future(session.asyncssh_create_session(self.password, self.password_2fa))
+                    # Wait for completion (this is a hack, ideally should be handled differently)
+                    import time
+                    while not future.done():
+                        time.sleep(0.01)
+                else:
+                    loop.run_until_complete(session.asyncssh_create_session(self.password, self.password_2fa))
+            except RuntimeError:
+                # No event loop in current thread, create new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(session.asyncssh_create_session(self.password, self.password_2fa))
+                finally:
+                    loop.close()
 
         return {'FINISHED'}
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
-#############################################################################    
-async def _ssh_tunnel(key_file, destination, port1, port2):
-        """ Execute an ssh command """
-        cmd = [
-            'ssh',
-            '-N',
-            '-i', key_file,            
-            '-L', port1,
-            '-L', port2,
-            destination,
-            '&',
-        ]
-        #             '-q',             '-o', 'StrictHostKeyChecking=no',
-
-        import asyncio
-        #loop = asyncio.get_event_loop()
-        #, stdin=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        #process = await asyncio.create_subprocess_exec(*cmd, loop=loop)
-        process = await asyncio.create_subprocess_exec(*cmd)
-        await process.wait()
-
-        if process.returncode != 0 and is_verbose_debug() == True:
-            print("ssh command failed: %s" % cmd)
-
-async def connect_to_client(context, fileTransfer, job_id: int, token: str) -> None:
-    """connect_to_client"""       
-
-    data = {
-        "SubmittedJobInfoId": job_id,
-        "SessionCode": token
-    }
-
-    #allocated_nodes_ips = await raas_server.post("JobManagement/GetAllocatedNodesIPs", data)
-    info_job = await raas_server.post("JobManagement/GetCurrentInfoForJob", data)
-    all_params = info_job['AllParameters']
-    allocated_nodes_ips = ''
-    for line in all_params.split('\n'):
-        if "exec_vnode" in line:
-            allocated_nodes_ips = line.split('(')
-            allocated_nodes_ips = allocated_nodes_ips[1].split(':')
-            break
-
-    print(allocated_nodes_ips)
-
-    serverHostname = fileTransfer['ServerHostname']
-    sharedBasepath = fileTransfer['SharedBasepath']
-    credentials = fileTransfer['Credentials']
-    username = credentials['UserName']
-
-    key_file = str(get_ssh_key_file())
-    destination = '%s@%s' % (username, serverHostname)
-    print('connect to server')
-
-    allocated_nodes_ips = allocated_nodes_ips[0]
-    if 'mic' in allocated_nodes_ips:
-        allocated_nodes_ips = '%s.head' % allocated_nodes_ips
-    port1 = '7000:%s:7000' % (allocated_nodes_ips)
-    port2 = '7001:%s:7001' % (allocated_nodes_ips)
-
-    await _ssh_tunnel(key_file, destination, port1, port2)
-
-##################################################################################
-##################################################################################    
-async def _ssh_async(key_file, server, username, command):
-    """ Execute an ssh command """
-
-    if username is None:
-        user_server = '%s' % (server)
-    else:
-        user_server = '%s@%s' % (username, server)        
-
-    if key_file is None:
-        cmd = [
-            'ssh',
-            user_server, command
-        ]
-    else:
-        cmd = [
-            'ssh',
-            '-i',  key_file,
-            user_server, command
-        ]
-
-    # import asyncio
-    # loop = asyncio.get_event_loop()
-    # process = await asyncio.create_subprocess_exec(*cmd, 
-    #     loop=loop,
-    #     stdout=asyncio.subprocess.PIPE,
-    #     stderr=asyncio.subprocess.PIPE)
-        
-    import asyncio
-    process = await asyncio.create_subprocess_exec(
-        *cmd, 
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE)        
-
-    #await process.wait()
-    #password = '{}\n'.format(password).encode()
-    stdout, stderr = await process.communicate()
-
-    if process.returncode != 0:
-        if stdout:
-            print(f'[stdout]\n{stdout.decode()}')
-        if stderr:
-            print(f'[stderr]\n{stderr.decode()}')        
-
-        raise Exception("ssh command failed: %s" % cmd)
-
-    return str(stdout.decode())
-
-def _ssh_sync(key_file, server, username, command):
-    """ Execute an ssh command """
-
-    if username is None:
-        user_server = '%s' % (server)
-    else:
-        user_server = '%s@%s' % (username, server)        
-
-    if key_file is None:
-        cmd = [
-            'ssh',
-            user_server, command
-        ]
-    else:
-        cmd = [
-            'ssh',
-            '-i',  key_file,
-            user_server, command
-        ]
-
-    import subprocess
-    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    # stdout=proc.stdout.read()
-    # stderr=proc.stderr.read()
-    stdout, stderr = process.communicate()
-
-    if process.returncode != 0:
-        if stdout:
-            print(str(stdout.decode()))
-        if stderr:
-            print(str(stderr.decode()))        
-
-        raise Exception("ssh command failed: %s" % cmd)
-
-    return str(stdout.decode())    
-
-# async def _ssh_system(server, command):
-#     """ Execute an ssh command """
-#     cmd = [
-#         'ssh',
-#         server, command
-#     ]
-
-#     import asyncio
-#     loop = asyncio.get_event_loop()
-#     process = await asyncio.create_subprocess_exec(*cmd, 
-#         loop=loop,
-#         stdin=asyncio.subprocess.PIPE,
-#         stdout=asyncio.subprocess.PIPE,
-#         stderr=asyncio.subprocess.PIPE)
-
-#     #await process.wait()
-#     # password = '{}\n'.format(password).encode()
-#     stdout, stderr = await process.communicate()
-
-#     if process.returncode != 0:
-#         if stdout:
-#             print(f'[stdout]\n{stdout.decode()}')
-#         if stderr:
-#             print(f'[stderr]\n{stderr.decode()}')        
-
-#         raise Exception("ssh command failed: %s" % cmd)
-
-#     return str(stdout.decode())    
-
-def _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command):
-        """ Execute an paramiko ssh command """
-
-        import paramiko
-        #from io import StringIO
-        #from base64 import b64decode
-        #from scp import SCPClient
-
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
-
-        #ssh = None
-        result = None
-        try: 
-            # ssh = paramiko.SSHClient()
-            # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            # try:
-            #     key = paramiko.RSAKey.from_private_key_file(key_file, password)
-            # except:
-            #     key = paramiko.Ed25519Key.from_private_key_file(key_file, password)
-
-            #ssh.connect(server, username=username, pkey=key)
-            ssh = bpy.context.scene.raas_session.paramiko_get_ssh(server)
-            stdin, stdout, stderr = ssh.exec_command(command)
-            result = stdout.readlines()
-            error = stderr.readlines()            
-
-            if len(error) > 0 and (len(error) > 1 or 'load bsc' not in error[0]):
-                raise Exception(str(error))
-
-            #ssh.close()    
-
-        except Exception as e:
-            # if scp is not None:
-            #     scp.close()
-
-            # if ssh is not None:
-            #     ssh.close()
-            #bpy.context.scene.raas_session.create_session(None)
-
-            raise Exception("paramiko ssh command failed:  %s: %s" % (e.__class__, e))    
-
-        return ''.join(result)
-
-async def ssh_command(server, command, preset):
-    if command  is None:
-        return None
-    
-    #pref = raas_pref.preferences()
-    #preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]    
-            
-    username = preset.raas_da_username
-    key_file = preset.raas_private_key_path
-    key_file_password = preset.raas_private_key_password
-    password = preset.raas_da_password
-    use_password = preset.raas_da_use_password
-    
-    if preset.raas_ssh_library == 'PARAMIKO':
-        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command)
-    else:
-        return await _ssh_async(None, server, None, command)
-
-def ssh_command_sync(server, command, preset):
-    if command  is None:
-        return None
-        
-    #pref = raas_pref.preferences()
-    #preset = pref.cluster_presets[bpy.context.scene.raas_cluster_presets_index]    
-        
-    username = preset.raas_da_username
-    key_file = preset.raas_private_key_path
-    key_file_password = preset.raas_private_key_password
-    password = preset.raas_da_password
-    use_password = preset.raas_da_use_password
-    
-    if preset.raas_ssh_library == 'PARAMIKO':
-        return _paramiko_ssh(server, username, key_file, key_file_password, password, use_password, command)
-    else:
-        return _ssh_sync(None, server, None, command)
-                  
-####################################FileTransfer#############################
-#############################################################################  
-
-async def _scp_async(key_file, source, destination):
-        """ Execute an scp command """
-
-        if key_file is None:
-            cmd = [
-                'scp',
-                '-o', 'StrictHostKeyChecking=no',
-                '-q',
-                '-B',
-                '-r',
-                source, destination
-            ]            
-        else:
-            cmd = [
-                'scp',
-                '-i',  key_file,
-                '-o', 'StrictHostKeyChecking=no',
-                '-q',
-                '-B',
-                '-r',
-                source, destination
-            ]
-
-        import asyncio
-        #loop = asyncio.get_event_loop()
-        process = await asyncio.create_subprocess_exec(*cmd, 
-            #loop=loop,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE)
-
-        #await process.wait()
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            if stdout:
-                print(f'[stdout]\n{stdout.decode()}')
-            if stderr:
-                print(f'[stderr]\n{stderr.decode()}')        
-
-            if is_verbose_debug() == True:
-                raise Exception("scp command failed: %s" % cmd)
-            else:
-                raise Exception("scp command failed: %s -> %s" % (source, destination))
-
-def _paramiko_put(server, username, key_file, key_file_password, password, use_password, source, destination):
-        """ Execute an paramiko command """
-
-        import paramiko
-        from io import StringIO
-        from base64 import b64decode
-        from scp import SCPClient
-
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
-
-        ssh = None
-        scp = None
-        try: 
-            # ssh = paramiko.SSHClient()
-            # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            # # if password is None:
-            # #     key = paramiko.RSAKey.from_private_key(StringIO(privateKey))
-            # # else:
-            # #     key = paramiko.RSAKey.from_private_key_file(privateKey, password)
-
-            # try:
-            #     #key = paramiko.RSAKey.from_private_key_file(key_file, password)
-
-            #     if password is None:
-            #         key = paramiko.RSAKey.from_private_key(StringIO(privateKey))
-            #     else:
-            #         key = paramiko.RSAKey.from_private_key_file(privateKey, password)
-
-            # except:
-            #     #key = paramiko.Ed25519Key.from_private_key_file(key_file, password)                
-            #     if password is None:
-            #         key = paramiko.Ed25519Key.from_private_key(StringIO(privateKey))
-            #     else:
-            #         key = paramiko.Ed25519Key.from_private_key_file(privateKey, password)
-
-            # ssh.connect(serverHostname, username=username, pkey=key)
-            ssh = bpy.context.scene.raas_session.paramiko_get_ssh(server)
-            scp = SCPClient(ssh.get_transport())
-            scp.put(source, recursive=True, remote_path=destination)       
-            #scp.close()    
-
-        except Exception as e:
-            # if scp is not None:
-            #     scp.close()
-
-            # if ssh is not None:
-            #     ssh.close()
-
-            raise Exception("paramiko command failed:  %s: %s" % (e.__class__, e))
-
-
-def _paramiko_get(server, username, key_file, key_file_password, password, use_password, source, destination):
-        """ Execute an paramiko command """
-
-        import paramiko
-        from io import StringIO
-        from base64 import b64decode
-        from scp import SCPClient
-
-        bpy.context.scene.raas_session.show_dialog(server, username, key_file, key_file_password, password, use_password)
-
-        ssh = None
-        scp = None
-        try: 
-            # ssh = paramiko.SSHClient()
-            # ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            # # if password is None:
-            # #     key = paramiko.RSAKey.from_private_key(StringIO(privateKey))
-            # # else:
-            # #     key = paramiko.RSAKey.from_private_key_file(privateKey, password)
-
-            # try:
-            #     #key = paramiko.RSAKey.from_private_key_file(key_file, password)
-            #     if password is None:
-            #         key = paramiko.RSAKey.from_private_key(StringIO(privateKey))
-            #     else:
-            #         key = paramiko.RSAKey.from_private_key_file(privateKey, password)                
-            # except:
-            #     #key = paramiko.Ed25519Key.from_private_key_file(key_file, password)
-            #     if password is None:
-            #         key = paramiko.Ed25519Key.from_private_key(StringIO(privateKey))
-            #     else:
-            #         key = paramiko.Ed25519Key.from_private_key_file(privateKey, password)                
-
-            # ssh.connect(serverHostname, username=username, pkey=key)
-            ssh = bpy.context.scene.raas_session.paramiko_get_ssh(server)
-            scp = SCPClient(ssh.get_transport())
-            scp.get(source, local_path=destination, recursive=True)
-            #scp.close()
-
-        except Exception as e:
-            # if scp is not None:
-            #     scp.close()
-
-            # if ssh is not None:
-            #     ssh.close()
-
-            raise Exception("paramiko command failed:  %s: %s" % (e.__class__, e))        
-
-
-async def start_transfer_files(context, job_id: int, token: str) -> None:
-    """Start Transfer files."""   
-
-    return None
-
-
-async def end_transfer_files(context, fileTransfer, job_id: int, token: str) -> None:
-    """End Transfer files."""    
-
-    return None
-  
-
-async def transfer_files(context, fileTransfer, job_local_dir: str, job_remote_dir: str, job_id: int, token: str, to_cluster) -> None:
-    """Transfer files."""
-
-    prefs = raas_pref.preferences()
-    preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
-
-    serverHostname = raas_config.GetDAServer(context)
-    cmd = CmdCreateProjectGroupFolder(context)
-    
-    await ssh_command(serverHostname, cmd, preset)
-
-    sharedBasepath = get_direct_access_remote_storage(context)    
-    
-    username = preset.raas_da_username
-    key_file = preset.raas_private_key_path
-    key_file_password = preset.raas_private_key_password
-    password = preset.raas_da_password
-    use_password = preset.raas_da_use_password
-
-    # check job_local_dir
-    if to_cluster == False:
-        job_local_dir_check = Path(job_local_dir)
-        job_local_dir_check.mkdir(parents=True, exist_ok=True)
-    
-    if preset.raas_ssh_library == 'PARAMIKO':
-        if to_cluster == True:
-            source = job_local_dir
-            destination = '%s/%s' % (str(sharedBasepath), job_remote_dir)
-            print('copy from %s to server' % (job_local_dir))
-            #await _paramiko_put(pkey, serverHostname, username, password, source, destination)
-            await asyncio.to_thread(_paramiko_put, serverHostname, username, key_file, key_file_password, password, use_password, source, destination)
-        else:
-            destination = job_local_dir
-            source = '%s/%s' % (str(sharedBasepath), job_remote_dir)
-            print('copy from server to: %s' % (job_local_dir))
-            #await _paramiko_get(pkey, serverHostname, username, password, source, destination)
-            await asyncio.to_thread(_paramiko_get, serverHostname, username, key_file, key_file_password, password, use_password, source, destination)
-
-    else:       
-        if to_cluster == True:
-            source = job_local_dir
-            destination = '%s:%s/%s' % (serverHostname, str(sharedBasepath), job_remote_dir)
-            print('copy from %s to server' % (job_local_dir))
-        else:
-            destination = job_local_dir
-            source = '%s:%s/%s' % (serverHostname, str(sharedBasepath), job_remote_dir)
-            print('copy from server to: %s' % (job_local_dir))
-
-        await _scp_async(None, source, destination)
-            
-
-async def transfer_files_to_cluster(context, fileTransfer, job_local_dir: str, job_remote_dir: str, job_id: int, token: str) -> None:
-    """Transfer files."""
-
-    await transfer_files(context, fileTransfer, job_local_dir, job_remote_dir, job_id, token, True)
-
-async def transfer_files_from_cluster(context, fileTransfer, job_remote_dir: str, job_local_dir: str, job_id: int, token: str) -> None:
-    """Transfer files."""
-
-    await transfer_files(context, fileTransfer, job_local_dir, job_remote_dir, job_id, token, False)
 
 ##################################################################################  
 class RAAS_OT_download_files(
@@ -1102,19 +403,21 @@ class RAAS_OT_download_files(
             try:
                 item = context.scene.raas_list_jobs[idx]
 
-                fileTransfer = await start_transfer_files(context, item.Id, self.token)
+                fileTransfer = await raas_connection.start_transfer_files(context, item.Id, self.token)
  
-                remote_storage_out = convert_path_to_linux(item.Name) + '/out'
-                local_storage_out = get_job_local_storage(item.Name)
+                # Download output files
+                remote_storage_out = raas_connection.convert_path_to_linux(item.Name) + '/out'
+                local_storage_out = raas_connection.get_job_local_storage(item.Name)
                 
-                await transfer_files_from_cluster(context, fileTransfer, remote_storage_out, str(local_storage_out), item.Id, self.token)    
+                await raas_connection.transfer_files_from_cluster(context, fileTransfer, remote_storage_out, str(local_storage_out), item.Id, self.token)    
 
-                remote_storage_log = convert_path_to_linux(item.Name) + '/log'
-                local_storage_log = get_job_local_storage(item.Name)
+                # Download log files
+                remote_storage_log = raas_connection.convert_path_to_linux(item.Name) + '/log'
+                local_storage_log = raas_connection.get_job_local_storage(item.Name)
                 
-                await transfer_files_from_cluster(context, fileTransfer, remote_storage_log, str(local_storage_log), item.Id, self.token)  
+                await raas_connection.transfer_files_from_cluster(context, fileTransfer, remote_storage_log, str(local_storage_log), item.Id, self.token)
 
-                await end_transfer_files(context, fileTransfer, item.Id, self.token)
+                await raas_connection.end_transfer_files(context, fileTransfer, item.Id, self.token)
             
             except Exception as e:
                 import traceback
@@ -1125,47 +428,6 @@ class RAAS_OT_download_files(
                 context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
 
         self.quit()
-
-class RAAS_OT_connect_to_client(
-                        async_loop.AsyncModalOperatorMixin,
-                        AuthenticatedRaasOperatorMixin,                         
-                        Operator):
-    """connect_to_client"""
-    bl_idname = 'raas.connect_to_client'
-    bl_label = 'Connect to client'
-
-    #stop_upon_exception = True
-    log = logging.getLogger('%s.RAAS_OT_connect_to_client' % __name__)
-
-    async def async_execute(self, context):
-
-        if not await self.authenticate(context):
-            self.quit()
-            return 
-
-        idx = context.scene.raas_list_jobs_index 
-
-        if idx != -1:
-            try:
-                item = context.scene.raas_list_jobs[idx]
-
-                fileTransfer = await start_transfer_files(context, item.Id, self.token)
-                
-                await connect_to_client(context, fileTransfer, item.Id, self.token)
-
-            except Exception as e:
-                #print('Problem with downloading files:')
-                #print(e)
-                import traceback
-                traceback.print_exc()
-
-                self.report({'ERROR'}, "Problem with connecting to the client: %s: %s" % (e.__class__, e))
-                context.window_manager.raas_status = "ERROR"
-                context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
-
-
-        self.quit()  
-
 
 class RAAS_OT_dash_barbora(
                         async_loop.AsyncModalOperatorMixin,
@@ -1226,6 +488,11 @@ class RAAS_OT_submit_job(
     async def async_execute(self, context):  
         try:
             update_job_info_preset(context)
+
+            if not await self.authenticate(context):
+                self.quit()
+                return
+
             # Refuse to start if the file hasn't been saved. It's okay if
             # it's dirty, but we do need a filename and a location.
             if context.scene.raas_blender_job_info_new.file_type == 'DEFAULT':
@@ -1239,22 +506,18 @@ class RAAS_OT_submit_job(
 
                 #context.scene.raas_blender_job_info_new.blendfile_path = context.blend_data.filepath
             else:
-                if not os.path.exists(get_blendfile_fullpath(context)):
+                if not os.path.exists(raas_connection.get_blendfile_fullpath(context)):
                     self.report({'ERROR'}, 'Blend file does not exist.')
                     context.window_manager.raas_status = "ERROR"
                     context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
 
                     self.quit()
-                    return
-
-            if not await self.authenticate(context):
-                self.quit()
-                return            
+                    return          
 
             #scene = context.scene
             prefs = raas_pref.preferences()
 
-            if prefs.cluster_presets[context.scene.raas_cluster_presets_index].is_active == False:
+            if prefs.cluster_presets[context.scene.raas_cluster_presets_index].is_enabled == False:
                 self.report({'ERROR'}, 'Selected configuration is not active.')
                 context.window_manager.raas_status = "ERROR"
                 context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
@@ -1287,6 +550,8 @@ class RAAS_OT_submit_job(
             outdir = Path(prefs.raas_job_storage_path) / unique_dir / 'in'
             outdir.mkdir(parents=True)
 
+            missing_sources = None
+
             if context.scene.raas_blender_job_info_new.file_type == 'DEFAULT':
                 # Save to a different file, specifically for Raas.
                 context.window_manager.raas_status = 'SAVING'
@@ -1294,7 +559,7 @@ class RAAS_OT_submit_job(
                 context.scene.raas_blender_job_info_new.blendfile = filepath.name
 
             else: #OTHER
-                filepath = Path(get_blendfile_fullpath(context)).with_suffix('.blend')        
+                filepath = Path(raas_connection.get_blendfile_fullpath(context)).with_suffix('.blend')        
 
             if context.scene.raas_blender_job_info_new.file_type == 'DEFAULT':
                 # BAT-pack the files to the destination directory.
@@ -1303,8 +568,7 @@ class RAAS_OT_submit_job(
                 # remove files
                 self.log.info("Removing temporary file %s", filepath)
                 filepath.unlink()                
-            else:
-                missing_sources = None
+            else:                  
 
                 from distutils.dir_util import copy_tree
                 copy_tree(bpy.path.abspath(context.scene.raas_blender_job_info_new.blendfile_dir), str(outdir))
@@ -1315,12 +579,7 @@ class RAAS_OT_submit_job(
             context.scene.raas_blender_job_info_new.frame_end = context.scene.frame_end
             context.scene.raas_blender_job_info_new.frame_current = context.scene.frame_current
 
-            context.scene.raas_blender_job_info_new.job_name = unique_dir
-            job_type = prefs.cluster_presets[context.scene.raas_cluster_presets_index].job_type
-            context.scene.raas_blender_job_info_new.job_type = job_type
-
-            if context.scene.raas_blender_job_info_new.job_type == 'GPUINTERACTIVE':
-                context.scene.raas_blender_job_info_new.job_project = 'INTERACTIVE'    
+            context.scene.raas_blender_job_info_new.job_name = unique_dir  
 
             # Do a final report.
             if missing_sources:
@@ -1333,14 +592,14 @@ class RAAS_OT_submit_job(
             
             blender_job_info_new = context.scene.raas_blender_job_info_new
 
-            local_storage_in = str(get_job_local_storage(blender_job_info_new.job_name))
-            remote_storage_in = convert_path_to_linux(get_job_remote_storage(blender_job_info_new.job_name))
+            local_storage_in = str(raas_connection.get_job_local_storage(blender_job_info_new.job_name))
+            remote_storage_in = raas_connection.convert_path_to_linux(raas_connection.get_job_remote_storage(blender_job_info_new.job_name))
 
             submitted_job_info_ext_new = context.scene.raas_submitted_job_info_ext_new
 
-            fileTransfer = await start_transfer_files(context, submitted_job_info_ext_new.Id, self.token)
-            await transfer_files_to_cluster(context, fileTransfer, local_storage_in, remote_storage_in, submitted_job_info_ext_new.Id, self.token)
-            await end_transfer_files(context, fileTransfer, submitted_job_info_ext_new.Id, self.token)
+            fileTransfer = await raas_connection.start_transfer_files(context, submitted_job_info_ext_new.Id, self.token)
+            await raas_connection.transfer_files_to_cluster(context, fileTransfer, local_storage_in, remote_storage_in, submitted_job_info_ext_new.Id, self.token)
+            await raas_connection.end_transfer_files(context, fileTransfer, submitted_job_info_ext_new.Id, self.token)
 
             item = context.scene.raas_submitted_job_info_ext_new
             asyncio.gather(ListSchedulerJobsForCurrentUser(context, self.token))
@@ -1534,7 +793,7 @@ class RAAS_OT_explore_file_path(Operator):
     bl_idname = 'raas.explore_file_path'
     bl_label = 'Open in file explorer'
 
-    path: StringProperty(name='Path', description='Path to explore', subtype='DIR_PATH')
+    path: StringProperty(name='Path', description='Path to explore', subtype='DIR_PATH') # type: ignore
 
     def execute(self, context):
         import platform
@@ -1602,13 +861,13 @@ class RAAS_OT_explore_file_path(Operator):
 class RAAS_UL_ClusterPresets(bpy.types.UIList):
     '''Draws table items - allocation, cluster and partition name.'''
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        if item.is_active:
+        if item.is_enabled:
             layout.label(text=item.allocation_name)
             layout.label(text=raas_config.Cluster_items_dict[item.cluster_name])
             layout.label(text=item.partition_name)
             layout.label(text=raas_config.JobQueue_items_dict[item.job_type])
         else:
-            layout.label(text='NON-ACTIVE')
+            layout.label(text='DISABLED')
             layout.label(text=raas_config.Cluster_items_dict[item.cluster_name])
             layout.label(text=item.partition_name)
             layout.label(text=raas_config.JobQueue_items_dict[item.job_type])
@@ -1649,6 +908,10 @@ def update_job_info_preset(context):
         my_property_group.cluster_type = preset.cluster_name
         my_property_group.job_partition = preset.partition_name
         my_property_group.job_allocation = preset.allocation_name
+
+        # job_type = prefs.cluster_presets[context.scene.raas_cluster_presets_index].job_type
+        # context.scene.raas_blender_job_info_new.job_type = job_type
+        my_property_group.job_type = preset.job_type
 
 
 class RAAS_PT_NewJob(RaasButtonsPanel, Panel):
@@ -2080,14 +1343,14 @@ async def ListSlurmJobsForCurrentUser(context, token):
 
     # Setup and execute remote command
     server = raas_config.GetDAServer(context)
-    cmd = CmdCreateProjectGroupFolder(context)
-    await ssh_command(server, cmd, preset)
-    remote_path = get_direct_access_remote_storage(context)
+    cmd = raas_connection.CmdCreateProjectGroupFolder(context)
+    await raas_connection.ssh_command(server, cmd, preset)
+    remote_path = raas_connection.get_direct_access_remote_storage(context)
 
     cmd = f'cd {remote_path};grep --with-filename "" *.job'
     
     try:
-        res = await ssh_command(server, cmd, preset)
+        res = await raas_connection.ssh_command(server, cmd, preset)
     except Exception:
         print("No tasks to refresh in the selected project.")
         context.scene.raas_list_jobs.clear()
@@ -2118,14 +1381,14 @@ async def ListPBSJobsForCurrentUser(context, token):
     
     # Setup and execute remote command
     server = raas_config.GetDAServer(context)
-    cmd = CmdCreateProjectGroupFolder(context)
-    await ssh_command(server, cmd, preset)
-    remote_path = get_direct_access_remote_storage(context)
+    cmd = raas_connection.CmdCreateProjectGroupFolder(context)
+    await raas_connection.ssh_command(server, cmd, preset)
+    remote_path = raas_connection.get_direct_access_remote_storage(context)
 
     cmd = f'cd {remote_path};grep --with-filename "" *.job'
     
     try:
-        res = await ssh_command(server, cmd, preset)   
+        res = await raas_connection.ssh_command(server, cmd, preset)   
     except Exception:
         print("No tasks to refresh in the selected project.")
         context.scene.raas_list_jobs.clear()
@@ -2199,14 +1462,14 @@ async def SubmitJob(context, token):
         server = raas_config.GetDAServer(context)        
         cmd = raas_jobs.CmdCreateJob(context)
         if len(cmd) > 0:  # number of characters
-            res = await ssh_command(server, cmd, preset)
+            res = await raas_connection.ssh_command(server, cmd, preset)
             if len(res.split('\n')) - 1 < 3: # number of returned slurm ids
                 raise Exception("ssh command (CmdCreateJob) failed: %s" % cmd)
 
             cmd = raas_jobs.CmdCreateStatJobFile(context, res)
             if len(cmd) > 0:
                 await asyncio.sleep(3)
-                res = await ssh_command(server, cmd, preset)
+                res = await raas_connection.ssh_command(server, cmd, preset)
                     
      
 
@@ -2218,9 +1481,9 @@ async def CancelJob(context, token):
         preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
         server = raas_config.GetDAServer(context)
-        remote_path = get_direct_access_remote_storage(context)
+        remote_path = raas_connection.get_direct_access_remote_storage(context)
         cmd = 'cat %s/%s.job | grep Id' % (remote_path, item.Name)
-        res = await ssh_command(server, cmd, preset)
+        res = await raas_connection.ssh_command(server, cmd, preset)
         if len(res) < 3:
             raise Exception("ssh command failed: %s" % cmd)
 
@@ -2229,10 +1492,10 @@ async def CancelJob(context, token):
             if len(job) > 0:
                 job_id = job.split(': ')[1]
                 cmd = 'qdel -W force %s' % (job_id)
-                res = await ssh_command(server, cmd, preset)
+                res = await raas_connection.ssh_command(server, cmd, preset)
 
         cmd = "sed -i 's/job_state = R/job_state = C/g' %s/%s.job;sed -i 's/job_state = Q/job_state = C/g' %s/%s.job;echo '   ' ftime = $(date) >> %s/%s.job" % (remote_path, item.Name, remote_path, item.Name, remote_path, item.Name)
-        res = await ssh_command(server, cmd, preset)
+        res = await raas_connection.ssh_command(server, cmd, preset)
 
 
 async def CancelSlurmJob(context, token):
@@ -2245,9 +1508,9 @@ async def CancelSlurmJob(context, token):
         preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
         server = raas_config.GetDAServer(context)
-        remote_path = get_direct_access_remote_storage(context)
+        remote_path = raas_connection.get_direct_access_remote_storage(context)
         cmd = 'grep "" %s/%s.job' % (remote_path, item.Name)
-        res = await ssh_command(server, cmd, preset)
+        res = await raas_connection.ssh_command(server, cmd, preset)
 
         lines = res.split('\n')  # make lines
 
@@ -2272,10 +1535,10 @@ async def CancelSlurmJob(context, token):
                     for el, sp in zip(elements, spaces):
                         updatedLine = updatedLine + f"{el:>{sp}}{' '}"
                     cmd = "sed -i 's/%s/%s/g' %s/%s.job" % (line, updatedLine, remote_path, item.Name)
-                    res = await ssh_command(server, cmd, preset)
+                    res = await raas_connection.ssh_command(server, cmd, preset)
 
         cmd = 'scancel -f %s' % (slurmId)
-        res = await ssh_command(server, cmd, preset)
+        res = await raas_connection.ssh_command(server, cmd, preset)
 
 
 class RAAS_OT_CancelJob(
@@ -2399,7 +1662,7 @@ class RAAS_PT_ListJobs(RaasButtonsPanel, Panel):
 
             box = layout.box()
 
-            local_storage = str(get_job_local_storage(item.Name))
+            local_storage = str(raas_connection.get_job_local_storage(item.Name))
             paths_layout = box.column(align=True)
             labeled_row = paths_layout.split(**raas_pref.factor(0.25), align=True)
             labeled_row.label(text='Storage Path:')
@@ -2412,7 +1675,23 @@ class RAAS_PT_ListJobs(RaasButtonsPanel, Panel):
             row = box.row()
             row.operator(RAAS_OT_download_files.bl_idname, text='Download results')
 
-#################################################  
+######################CLEANUP###########################  
+@bpy.app.handlers.persistent
+def cleanup_on_exit():
+    """Cleanup SSH connections and tunnels when Blender exits"""
+    try:
+        if hasattr(bpy.context.scene, 'raas_session'):
+            session = bpy.context.scene.raas_session
+            if session:
+                session.close_ssh_tunnel()
+                session.close_ssh_command()
+                session.close_ssh_command_jump()
+                session.paramiko_close()                
+
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+
+#################################################
 
 # RaasManagerGroup needs to be registered before classes that use it.
 _rna_classes = []
@@ -2426,6 +1705,7 @@ _rna_classes.extend(
 
 def register():
     #from ..utils import redraw
+    bpy.app.handlers.load_pre.append(cleanup_on_exit)        
 
     for cls in _rna_classes:
         bpy.utils.register_class(cls)
@@ -2439,7 +1719,7 @@ def register():
     scene.raas_submitted_job_info_ext_new = bpy.props.PointerProperty(type=RAAS_PG_SubmittedJobInfoExt, options={'SKIP_SAVE'})
     scene.raas_total_core_hours_usage = bpy.props.IntProperty(default=0)
     
-    scene.raas_session = RaasSession()
+    scene.raas_session = raas_connection.RaasSession()
     #################################       
 
     bpy.types.WindowManager.raas_status = EnumProperty(
@@ -2478,6 +1758,13 @@ def register():
 
 
 def unregister():
+
+    if cleanup_on_exit in bpy.app.handlers.load_pre:
+        bpy.app.handlers.load_pre.remove(cleanup_on_exit)
+    
+    # Also cleanup immediately on addon disable
+    cleanup_on_exit()
+
     for cls in _rna_classes:
         try:
             bpy.utils.unregister_class(cls)

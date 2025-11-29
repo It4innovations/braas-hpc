@@ -37,11 +37,10 @@ import rna_prop_ui
 
 from . import async_loop
 from . import raas_server
-from . import raas_jobs
 from . import raas_config
-from . import raas_render
+from . import raas_connection
 
-ADDON_NAME = 'braas-hpc'
+ADDON_NAME = 'braas_hpc'
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +72,7 @@ def show_message_box(message="", title="BRaaS-HPC", icon='INFO'):
 Dependency = namedtuple("Dependency", ["module", "package", "name"])
 python_dependencies = (Dependency(module="paramiko", package="paramiko", name=None),
                        Dependency(module="scp", package="scp", name=None),
+                       Dependency(module="asyncssh", package="asyncssh", name=None),
                        )
                     #    Dependency(module="blender_asset_tracer",
                     #               package="blender_asset_tracer", name=None),
@@ -246,7 +246,7 @@ class RAAS_OT_upload_sshkey(Operator):
 #             cmd = raas_jobs.CmdGetPidDir(pref.raas_pid.upper())
 #             if len(cmd) > 0:
 #                 server = raas_config.GetDAServer(context)
-#                 res = raas_render.ssh_command_sync(server, cmd)
+#                 res = raas_connection.ssh_command_sync(server, cmd)
 #                 pref.raas_pid_dir = res.strip()
 
 #         except Exception as e:
@@ -278,7 +278,7 @@ class RAAS_OT_upload_sshkey(Operator):
 #                 if len(cmd) > 0:
 #                     # server = raas_config.GetDAServer(context)
 #                     server = raas_config.GetServerFromType(cl[0])
-#                     res = raas_render.ssh_command_sync(server, cmd)
+#                     res = raas_connection.ssh_command_sync(server, cmd)
 #                     preferences().raas_pid_dir = res.strip()
 
 #                     break
@@ -304,10 +304,10 @@ class RAAS_OT_install_scripts(Operator):
     def execute(self, context):
         for cl in raas_config.Cluster_items:
             try:
-                #presets_tuples = [(p.cluster_name, p.is_active) for p in preferences().cluster_presets] 
+                #presets_tuples = [(p.cluster_name, p.is_enabled) for p in preferences().cluster_presets] 
 
                 for p in preferences().cluster_presets:
-                    if p.cluster_name == cl[0] and p.is_active:
+                    if p.cluster_name == cl[0] and p.is_enabled and preferences().raas_scripts_installed == False:
                         # TODO: MJ
                         if not preferences().check_valid_settings(p, type='INSTALL_SCRIPTS'):
                             return {"CANCELLED"}
@@ -318,7 +318,7 @@ class RAAS_OT_install_scripts(Operator):
                         ).raas_scripts_repository, preferences().raas_scripts_repository_branch)
                         if len(cmd) > 0:
                             server = raas_config.GetServerFromType(cl[0])
-                            raas_render.ssh_command_sync(server, cmd, p)
+                            raas_connection.ssh_command_sync(server, cmd, p)
 
                             #preferences().raas_scripts_installed = True
 
@@ -327,7 +327,7 @@ class RAAS_OT_install_scripts(Operator):
                         cmd = raas_config.GetBlenderInstallCommand(p, preferences().raas_blender_link)
                         if len(cmd) > 0:
                             server = raas_config.GetServerFromType(cl[0])
-                            raas_render.ssh_command_sync(server, cmd, p)
+                            raas_connection.ssh_command_sync(server, cmd, p)
 
                             #preferences().raas_blender_installed = True
 
@@ -336,7 +336,7 @@ class RAAS_OT_install_scripts(Operator):
                         cmd = raas_config.GetBlenderPatchCommand(p, preferences().raas_blender_link)
                         if len(cmd) > 0:
                             server = raas_config.GetServerFromType(cl[0])
-                            raas_render.ssh_command_sync(server, cmd, p)                            
+                            raas_connection.ssh_command_sync(server, cmd, p)                            
 
                         preferences().raas_scripts_installed = True
 
@@ -362,13 +362,13 @@ class RAAS_OT_install_scripts(Operator):
 #     def execute(self, context):
 #         for cl in raas_config.Cluster_items:
 #             try:
-#                 # presets_tuples = [(p.cluster_name, p.is_active) for p in preferences().cluster_presets] 
+#                 # presets_tuples = [(p.cluster_name, p.is_enabled) for p in preferences().cluster_presets] 
 #                 # if not preferences().check_valid_settings(cl, type='INSTALL_BLENDER'):
 #                 #     return {"CANCELLED"}
 
 #                 for p in preferences().cluster_presets:
 #                     #if (cl[0], True) in presets_tuples:
-#                     if p.cluster_name == cl[0] and p.is_active:
+#                     if p.cluster_name == cl[0] and p.is_enabled:
 #                         # TODO: MJ
 #                         if not preferences().check_valid_settings(p, type='INSTALL_SCRIPTS'):
 #                             return {"CANCELLED"}
@@ -378,7 +378,7 @@ class RAAS_OT_install_scripts(Operator):
 #                         cmd = raas_config.GetBlenderInstallCommand(preferences().raas_blender_link)
 #                         if len(cmd) > 0:
 #                             server = raas_config.GetServerFromType(cl[0])
-#                             raas_render.ssh_command_sync(server, cmd, p)
+#                             raas_connection.ssh_command_sync(server, cmd, p)
 
 #                             preferences().raas_blender_installed = True
 #                         break
@@ -510,7 +510,7 @@ def cluster_partition_settings_callback(self, context):
 class ClusterPresets(bpy.types.PropertyGroup):
     """
         A property group of cluster presets. Each presets has the following properties:
-        cluster_name, partition_name (queue), allocation_name, is_active, working_dir.
+        cluster_name, partition_name (queue), allocation_name, is_enabled, working_dir.
     """
 
     cluster_name: bpy.props.EnumProperty(
@@ -536,8 +536,8 @@ class ClusterPresets(bpy.types.PropertyGroup):
         name="Type of Job (resources)"
     ) # type: ignore
 
-    is_active: bpy.props.BoolProperty(
-        name="Active",
+    is_enabled: bpy.props.BoolProperty(
+        name="Enabled",
         description="This settings is active",
         default=True
     ) # type: ignore
@@ -577,6 +577,11 @@ class ClusterPresets(bpy.types.PropertyGroup):
         subtype='PASSWORD'
     ) # type: ignore
 
+    raas_use_2FA: bpy.props.BoolProperty(
+        name="Use 2FA",
+        default=False
+    ) # type: ignore    
+
     raas_ssh_library: EnumProperty(
         name='SSH Library',
         items=raas_config.ssh_library_items
@@ -602,10 +607,10 @@ class RAAS_OT_find_working_dir(Operator):
                     raas_config.GetPidDir(preset)  # sets the working_dir in the preset
 
                 # # Test connection
-                # if preset.is_active:
+                # if preset.is_enabled:
                 #     server = raas_config.GetServerFromType(preset.cluster_name.upper())
                 #     cmd = 'hostname'
-                #     res = raas_render.ssh_command_sync(server, cmd, preset)
+                #     res = raas_connection.ssh_command_sync(server, cmd, preset)
                 #     print("Test connection to %s: %s" % (preset.cluster_name, res.strip()))
 
         except Exception as e:
@@ -638,10 +643,10 @@ class RAAS_OT_test_connection(Operator):
                 #     raas_config.GetPidDir(preset)  # sets the working_dir in the preset
 
                 # Test connection
-                if preset.is_active:
+                if preset.is_enabled:
                     server = raas_config.GetServerFromType(preset.cluster_name.upper())
                     cmd = 'hostname'
-                    res = raas_render.ssh_command_sync(server, cmd, preset)
+                    res = raas_connection.ssh_command_sync(server, cmd, preset)
                     print("Test connection to %s: %s" % (preset.cluster_name, res.strip()))
 
         except Exception as e:
@@ -796,7 +801,7 @@ class RaasPreferences(AddonPreferences):
 
     raas_blender_link: StringProperty(
         name='Link',
-        default='https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz'
+        default='https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.5-linux-x64.tar.xz'
     ) # type: ignore
 
     raas_scripts_installed: BoolProperty(
@@ -824,7 +829,7 @@ class RaasPreferences(AddonPreferences):
     ) # type: ignore
 
     def check_valid_settings(self, cl, type='NONE'):
-        if cl.raas_ssh_library == 'PARAMIKO':
+        if cl.raas_ssh_library == 'ASYNCSSH' or cl.raas_ssh_library == 'PARAMIKO':
             if len(cl.raas_da_username) == 0:
                 show_message_box(
                     message='Username is not set in preferences', icon='ERROR')
@@ -949,7 +954,7 @@ class RaasPreferences(AddonPreferences):
         
         for idx, preset in enumerate(self.cluster_presets):
             if preset.working_dir == '' or preset.allocation_name == '':
-                preset.is_active = False
+                preset.is_enabled = False
             box_row = box.box()
             raas_pid = box_row.split(**factor(1.0), align=True)
             pid_box = raas_pid.column(align=True)
@@ -960,7 +965,21 @@ class RaasPreferences(AddonPreferences):
             raas_pid = box_row.split(**factor(1.0), align=True)
             pid_box = raas_pid.column(align=True)
             pid_box.prop(preset, "raas_da_username")
-            pid_box.prop(preset, "raas_da_use_password")
+
+            rep_split = box_row.split(**factor(0.25), align=True)
+            rep_split.label(text='Use Password:')
+            rep_box1 = rep_split.row(align=True)
+            rep_box = rep_box1.row(align=True)
+            rep_box.prop(preset, 'raas_da_use_password', text='')
+
+            rep_split = box_row.split(**factor(0.25), align=True)
+            rep_split.label(text='Use 2FA:')
+            rep_box1 = rep_split.row(align=True)
+            rep_box = rep_box1.row(align=True)
+            rep_box.prop(preset, 'raas_use_2FA', text='')
+
+            # pid_box.prop(preset, "raas_use_2FA")
+            # pid_box.prop(preset, "raas_da_use_password")            
             
             if preset.raas_da_use_password:
                 pid_box.prop(preset, "raas_da_password")
@@ -976,7 +995,7 @@ class RaasPreferences(AddonPreferences):
             pid_box = raas_pid.column(align=True)
             pid_box.prop(preset, "allocation_name")
             pid_box.prop(preset, "working_dir", text='Dir')
-            pid_box.prop(preset, "is_active")
+            pid_box.prop(preset, "is_enabled")
             pid_box.operator("pref.removecluster", icon="CANCEL").index = idx
 
 

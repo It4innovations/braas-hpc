@@ -18,7 +18,7 @@ bl_info = {
     "author" : "Milan Jaros, Petr Strakos, Marta Jaros, Lubomir Riha",
     "description" : "Rendering-as-a-service for Blender on HPC",
     "blender" : (4, 0, 0),
-    "version" : (4, 5, 2),
+    "version" : (4, 5, 5),
     "location" : "Addon Preferences panel",
     "wiki_url" : "https://github.com/It4innovations/braas-hpc/",
     "category" : "System",
@@ -53,5 +53,5 @@ def unregister():
         raas_pref.unregister()
         raas_render.unregister() 
     except RuntimeError:
-        pass    
+        pass
 

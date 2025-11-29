@@ -47,7 +47,7 @@ from . import async_loop
 from . import raas_server
 from . import raas_pref
 from . import raas_config
-from . import raas_render
+from . import raas_connection
 
 ################################
 log = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ async def CreateJobTask3Dep(context,
     use_mpi2 = str(use_mpi2)
     use_mpi3 = str(use_mpi3)
 
-    blender_param = raas_render.convert_path_to_linux(blender_job_info_new.blendfile)
+    blender_param = raas_connection.convert_path_to_linux(blender_job_info_new.blendfile)
     blender_version = raas_config.GetBlenderClusterVersion()
 
     job_walltime = blender_job_info_new.job_walltime * 60
@@ -404,7 +404,7 @@ def CmdCreatePBSJob(context):
             for env in envs:
                 job_env = job_env + env['Name'] + '=' + env['Value'] + ','
 
-        work_dir = raas_render.get_direct_access_remote_storage(
+        work_dir = raas_connection.get_direct_access_remote_storage(
             context) + '/' + job_name
 
         work_dir_stderr = work_dir + '/' + task['StandardErrorFile']
@@ -491,7 +491,7 @@ def CmdCreateSLURMJob(context):
             for env in envs:
                 job_env = job_env + env['Name'] + '=' + env['Value'] + ','
 
-        work_dir = raas_render.get_direct_access_remote_storage(
+        work_dir = raas_connection.get_direct_access_remote_storage(
             context) + '/' + job_name
 
         work_dir_stderr = work_dir + '/' + task['StandardErrorFile']
@@ -568,7 +568,7 @@ def CmdCreateStatPBSJobFile(context, pbs_jobs):
     pbs_job = pbs_jobs[1]
 
     if len(pbs_job) > 0:
-        job_log = raas_render.get_direct_access_remote_storage(
+        job_log = raas_connection.get_direct_access_remote_storage(
             context) + '/' + job_name + '.job'
         cmd = cmd + 'qstat -fx ' + pbs_job + ' > ' + job_log + ';'        
 
@@ -597,7 +597,7 @@ def CmdCreateStatSLURMJobFile(context, slurm_jobs):
     slurm_job = slurm_jobs[1]  # avoid the init and finish scripts
 
     if len(slurm_jobs) > 0:
-        job_log = raas_render.get_direct_access_remote_storage(
+        job_log = raas_connection.get_direct_access_remote_storage(
             context) + '/' + job_name + '.job'
         # grep -v omits logging of such as slurmID.batch tasks
         cmd = cmd + 'sacct -j ' + slurm_job + ' --format=JobID%20,Jobname%50,state,Submit,start,end | grep -v "\." > ' \
