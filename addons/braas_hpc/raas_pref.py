@@ -314,28 +314,33 @@ class RAAS_OT_install_scripts(Operator):
                                         
                         # Install scripts
                         self.report({'INFO'}, "Install scripts on '%s'" % (cl[0]))
-                        cmd = raas_config.GetGitAddonCommand(preferences(
-                        ).raas_scripts_repository, preferences().raas_scripts_repository_branch)
+                        #cmd = raas_config.GetGitAddonCommand(preferences().raas_scripts_repository, preferences().raas_scripts_repository_branch)
+                        cmd = context.scene.raas_config_functions.call_get_git_addon_command(preferences().raas_scripts_repository, preferences().raas_scripts_repository_branch)
                         if len(cmd) > 0:
-                            server = raas_config.GetServerFromType(cl[0])
+                            #server = raas_config.GetServerFromType(cl[0])
+                            server = context.scene.raas_config_functions.call_get_server_from_type(cl[0])
                             raas_connection.ssh_command_sync(server, cmd, p)
 
                             #preferences().raas_scripts_installed = True
 
                         # Install Blender
                         self.report({'INFO'}, "Install Blender on '%s'" % (cl[0]))
-                        cmd = raas_config.GetBlenderInstallCommand(p, preferences().raas_blender_link)
+                        # cmd = raas_config.GetBlenderInstallCommand(p, preferences().raas_blender_link)
+                        cmd = context.scene.raas_config_functions.call_get_blender_install_command(p, preferences().raas_blender_link)
                         if len(cmd) > 0:
-                            server = raas_config.GetServerFromType(cl[0])
+                            #server = raas_config.GetServerFromType(cl[0])
+                            server = context.scene.raas_config_functions.call_get_server_from_type(cl[0])
                             raas_connection.ssh_command_sync(server, cmd, p)
 
                             #preferences().raas_blender_installed = True
 
                         # Apply patches
                         self.report({'INFO'}, "Apply patches on '%s'" % (cl[0]))
-                        cmd = raas_config.GetBlenderPatchCommand(p, preferences().raas_blender_link)
+                        # cmd = raas_config.GetBlenderPatchCommand(p, preferences().raas_blender_link)
+                        cmd = context.scene.raas_config_functions.call_get_blender_patch_command(p, preferences().raas_blender_link)
                         if len(cmd) > 0:
-                            server = raas_config.GetServerFromType(cl[0])
+                            #server = raas_config.GetServerFromType(cl[0])
+                            server = context.scene.raas_config_functions.call_get_server_from_type(cl[0])
                             raas_connection.ssh_command_sync(server, cmd, p)                            
 
                         preferences().raas_scripts_installed = True
@@ -604,7 +609,8 @@ class RAAS_OT_find_working_dir(Operator):
                     return {"CANCELLED"}
 
                 if preset.allocation_name != "" and len(preset.working_dir) == 0:
-                    raas_config.GetPidDir(preset)  # sets the working_dir in the preset
+                    #raas_config.SetPidDir(preset)  # sets the working_dir in the preset
+                    context.scene.raas_config_functions.call_set_pid_dir(preset)  # sets the working_dir in the preset
 
                 # # Test connection
                 # if preset.is_enabled:
@@ -644,7 +650,8 @@ class RAAS_OT_test_connection(Operator):
 
                 # Test connection
                 if preset.is_enabled:
-                    server = raas_config.GetServerFromType(preset.cluster_name.upper())
+                    #server = raas_config.GetServerFromType(preset.cluster_name.upper())
+                    server = context.scene.raas_config_functions.call_get_server_from_type(preset.cluster_name.upper())
                     cmd = 'hostname'
                     res = raas_connection.ssh_command_sync(server, cmd, preset)
                     print("Test connection to %s: %s" % (preset.cluster_name, res.strip()))

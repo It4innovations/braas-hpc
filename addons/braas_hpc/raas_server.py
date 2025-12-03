@@ -44,7 +44,8 @@ def get_endpoint(endpoint_path=None):
     import functools
 
     #base_url = raas_config.GetServer(raas_pref.preferences().raas_pid.lower())
-    pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(bpy.context, raas_pref.preferences())
+    #pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(bpy.context, raas_pref.preferences())
+    pid_name, pid_queue, pid_dir = bpy.context.scene.raas_config_functions.call_get_current_pid_info(bpy.context, raas_pref.preferences())
     base_url = raas_config.GetServer(pid_name.lower())
 
     # urljoin() is None-safe for the 2nd parameter.

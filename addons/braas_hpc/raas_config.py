@@ -720,7 +720,7 @@ def GetCurrentPidInfo(context, preferences):
 
     return name, queue, dir
 
-def GetPidDir(preset):
+def SetPidDir(preset):
     if preset.cluster_name == "LUMI": # ugly but the code needs redesign
         preset.working_dir = "/scratch/" + preset.allocation_name
     elif preset.cluster_name == "LEONARDO": # ugly but the code needs redesign
@@ -746,3 +746,86 @@ def GetPidDir(preset):
 
     else:
         raise Exception("Unknown cluster name")
+    
+
+class RaasConfigFunctions:
+    """Class that holds pointers to all functions"""
+    
+    def __init__(self):
+        # Function pointers
+        # self.get_blender_cluster_version = GetBlenderClusterVersion
+        self.create_job = CreateJob
+        # self.get_server = GetServer
+        self.get_server_from_type = GetServerFromType
+        self.get_scheduler_from_context = GetSchedulerFromContext
+        self.get_da_server = GetDAServer
+        self.get_da_cluster_path = GetDAClusterPath
+        self.get_da_open_call_project = GetDAOpenCallProject
+        self.get_da_queue_mpi_procs = GetDAQueueMPIProcs
+        self.get_da_queue_script = GetDAQueueScript
+        self.get_git_addon_command = GetGitAddonCommand
+        self.get_blender_install_command = GetBlenderInstallCommand
+        self.get_blender_patch_command = GetBlenderPatchCommand
+        self.get_current_pid_info = GetCurrentPidInfo
+        self.set_pid_dir = SetPidDir
+    
+    # Convenience methods that can be called on the instance
+    # def call_get_blender_cluster_version(self):
+    #     """Returns Blender cluster version string"""
+    #     return self.get_blender_cluster_version()
+    
+    async def call_create_job(self, context, token):
+        """Creates a job with the given context and token"""
+        return await self.create_job(context, token)
+    
+    # def call_get_server(self, pid):
+    #     """Gets server from PID"""
+    #     return self.get_server(pid)
+    
+    def call_get_server_from_type(self, cluster_type):
+        """Gets server from cluster type"""
+        return self.get_server_from_type(cluster_type)
+    
+    def call_get_scheduler_from_context(self, context):
+        """Gets scheduler from context"""
+        return self.get_scheduler_from_context(context)
+    
+    def call_get_da_server(self, context):
+        """Gets DA server from context"""
+        return self.get_da_server(context)
+    
+    def call_get_da_cluster_path(self, context, project_dir, pid):
+        """Gets DA cluster path"""
+        return self.get_da_cluster_path(context, project_dir, pid)
+    
+    def call_get_da_open_call_project(self, pid):
+        """Gets DA open call project"""
+        return self.get_da_open_call_project(pid)
+    
+    def call_get_da_queue_mpi_procs(self, command_template_id):
+        """Gets DA queue MPI processes count"""
+        return self.get_da_queue_mpi_procs(command_template_id)
+    
+    def call_get_da_queue_script(self, cluster_id, command_template_id):
+        """Gets DA queue script"""
+        return self.get_da_queue_script(cluster_id, command_template_id)
+    
+    def call_get_git_addon_command(self, repository, branch):
+        """Gets git addon command"""
+        return self.get_git_addon_command(repository, branch)
+    
+    def call_get_blender_install_command(self, preset, url_link):
+        """Gets Blender install command"""
+        return self.get_blender_install_command(preset, url_link)
+    
+    def call_get_blender_patch_command(self, preset, url_link):
+        """Gets Blender patch command"""
+        return self.get_blender_patch_command(preset, url_link)
+    
+    def call_get_current_pid_info(self, context, preferences):
+        """Gets current PID info"""
+        return self.get_current_pid_info(context, preferences)
+    
+    def call_set_pid_dir(self, preset):
+        """Sets PID directory"""
+        return self.set_pid_dir(preset)

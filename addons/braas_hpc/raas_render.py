@@ -104,7 +104,6 @@ class RAAS_PT_simplify(RaasButtonsPanel, Panel):
 
         # check values
         pref = raas_pref.preferences()
-        #pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(context, pref)
 
         if context.scene.raas_cluster_presets_index > -1 and len(pref.cluster_presets) > 0:
             preset = pref.cluster_presets[context.scene.raas_cluster_presets_index]
@@ -588,7 +587,8 @@ class RAAS_OT_submit_job(
                             '; '.join(names
                             ))
 
-            await raas_config.CreateJob(context, self.token)  
+            # await raas_config.CreateJob(context, self.token)  
+            await context.scene.raas_config_functions.call_create_job(context, self.token)
             
             blender_job_info_new = context.scene.raas_blender_job_info_new
 
@@ -601,7 +601,7 @@ class RAAS_OT_submit_job(
             await raas_connection.transfer_files_to_cluster(context, fileTransfer, local_storage_in, remote_storage_in, submitted_job_info_ext_new.Id, self.token)
             await raas_connection.end_transfer_files(context, fileTransfer, submitted_job_info_ext_new.Id, self.token)
 
-            item = context.scene.raas_submitted_job_info_ext_new
+            # item = context.scene.raas_submitted_job_info_ext_new
             asyncio.gather(ListSchedulerJobsForCurrentUser(context, self.token))
             
             await asyncio.gather(SubmitJob(context, self.token))
@@ -1342,7 +1342,8 @@ async def ListSlurmJobsForCurrentUser(context, token):
     preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
     # Setup and execute remote command
-    server = raas_config.GetDAServer(context)
+    # server = raas_config.GetDAServer(context)
+    server = context.scene.raas_config_functions.call_get_da_server(context)
     cmd = raas_connection.CmdCreateProjectGroupFolder(context)
     await raas_connection.ssh_command(server, cmd, preset)
     remote_path = raas_connection.get_direct_access_remote_storage(context)
@@ -1380,7 +1381,8 @@ async def ListPBSJobsForCurrentUser(context, token):
     preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
     
     # Setup and execute remote command
-    server = raas_config.GetDAServer(context)
+    # server = raas_config.GetDAServer(context)
+    server = context.scene.raas_config_functions.call_get_da_server(context)
     cmd = raas_connection.CmdCreateProjectGroupFolder(context)
     await raas_connection.ssh_command(server, cmd, preset)
     remote_path = raas_connection.get_direct_access_remote_storage(context)
@@ -1414,7 +1416,9 @@ async def ListSchedulerJobsForCurrentUser(context, token):
         token: Authentication token
     """
     #cluster_type = context.scene.raas_blender_job_info_new.cluster_type
-    scheduler = raas_config.GetSchedulerFromContext(context)
+    # scheduler = raas_config.GetSchedulerFromContext(context)
+    scheduler = context.scene.raas_config_functions.call_get_scheduler_from_context(context)
+
     if scheduler == 'SLURM':
         await ListSlurmJobsForCurrentUser(context, token)
     elif scheduler == 'PBS':
@@ -1459,7 +1463,8 @@ async def SubmitJob(context, token):
         prefs = raas_pref.preferences()
         preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
-        server = raas_config.GetDAServer(context)        
+        # server = raas_config.GetDAServer(context)        
+        server = context.scene.raas_config_functions.call_get_da_server(context)
         cmd = raas_jobs.CmdCreateJob(context)
         if len(cmd) > 0:  # number of characters
             res = await raas_connection.ssh_command(server, cmd, preset)
@@ -1480,7 +1485,8 @@ async def CancelJob(context, token):
         prefs = raas_pref.preferences()
         preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
-        server = raas_config.GetDAServer(context)
+        # server = raas_config.GetDAServer(context)
+        server = context.scene.raas_config_functions.call_get_da_server(context)
         remote_path = raas_connection.get_direct_access_remote_storage(context)
         cmd = 'cat %s/%s.job | grep Id' % (remote_path, item.Name)
         res = await raas_connection.ssh_command(server, cmd, preset)
@@ -1507,7 +1513,8 @@ async def CancelSlurmJob(context, token):
         prefs = raas_pref.preferences()
         preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
-        server = raas_config.GetDAServer(context)
+        # server = raas_config.GetDAServer(context)
+        server = context.scene.raas_config_functions.call_get_da_server(context)
         remote_path = raas_connection.get_direct_access_remote_storage(context)
         cmd = 'grep "" %s/%s.job' % (remote_path, item.Name)
         res = await raas_connection.ssh_command(server, cmd, preset)
@@ -1683,7 +1690,7 @@ def cleanup_on_exit():
         if hasattr(bpy.context.scene, 'raas_session'):
             session = bpy.context.scene.raas_session
             if session:
-                session.close_ssh_tunnel()
+                # session.close_ssh_tunnel()
                 session.close_ssh_command()
                 session.close_ssh_command_jump()
                 session.paramiko_close()                
@@ -1720,6 +1727,7 @@ def register():
     scene.raas_total_core_hours_usage = bpy.props.IntProperty(default=0)
     
     scene.raas_session = raas_connection.RaasSession()
+    scene.raas_config_functions = raas_config.RaasConfigFunctions()
     #################################       
 
     bpy.types.WindowManager.raas_status = EnumProperty(

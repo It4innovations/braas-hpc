@@ -75,9 +75,10 @@ async def CreateJobTask3Dep(context,
     job = None
     username = preset.raas_da_username
     use_xorg = str(job_type == 'ORIGEEVEE' or job_type == 'ORIGWORKBENCH')
-    use_mpi1 = raas_config.GetDAQueueMPIProcs(job_task1.CommandTemplateId)
-    use_mpi2 = raas_config.GetDAQueueMPIProcs(job_task2.CommandTemplateId)
-    use_mpi3 = raas_config.GetDAQueueMPIProcs(job_task3.CommandTemplateId)
+    # use_mpi1 = raas_config.GetDAQueueMPIProcs(job_task1.CommandTemplateId)
+    use_mpi1 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task1.CommandTemplateId)
+    use_mpi2 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task2.CommandTemplateId)
+    use_mpi3 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task3.CommandTemplateId)
 
     if blender_job_info_new.render_type == 'IMAGE':        
         job_arrays = None
@@ -387,10 +388,11 @@ def CmdCreatePBSJob(context):
     for task in tasks:
         cluster_node_type_id = task['ClusterNodeTypeId']
         command_template_id = task['CommandTemplateId']
-        cores, script = raas_config.GetDAQueueScript(
-            cluster_id, command_template_id)
-        pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-            context, raas_pref.preferences())
+        # cores, script = raas_config.GetDAQueueScript(cluster_id, command_template_id)
+        cores, script = context.scene.raas_config_functions.call_get_da_queue_script(cluster_id, command_template_id)
+
+        # pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(context, raas_pref.preferences())
+        pid_name, pid_queue, pid_dir = context.scene.raas_config_functions.call_get_current_pid_info(context, raas_pref.preferences())
 
         file = task['TemplateParameterValues'][0]['ParameterValue']
 
@@ -437,9 +439,12 @@ def CmdCreatePBSJob(context):
         if cluster_id in [8]: # AURORA
             custom_flags += ' -l filesystems=flare '
 
+        #pid = raas_config.GetDAOpenCallProject(pid_name)
+        pid = context.scene.raas_config_functions.call_get_da_open_call_project(pid_name)
+
         ## -P \"' + job_project +
         cmd = cmd + '_' + str(task_id) + '=$(echo \' ' + script + ' ' + file + ' \' | qsub ' + \
-            ' -A ' + raas_config.GetDAOpenCallProject(pid_name) + ' -v ' + \
+            ' -A ' + pid + ' -v ' + \
             job_env + ' -l select=' + str(nodes) + \
             ' -N \"' + job_project + '\" -l walltime=' + walltime + ' -e ' + work_dir_stderr + \
             ' -o ' + work_dir_stdout + ' -q ' + pid_queue + job_array + \
@@ -474,10 +479,11 @@ def CmdCreateSLURMJob(context):
     for task in tasks:
         cluster_node_type_id = task['ClusterNodeTypeId']
         command_template_id = task['CommandTemplateId']
-        cores, script = raas_config.GetDAQueueScript(
-            cluster_id, command_template_id)
-        pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-            context, raas_pref.preferences())
+        #cores, script = raas_config.GetDAQueueScript(cluster_id, command_template_id)
+        cores, script = context.scene.raas_config_functions.call_get_da_queue_script(cluster_id, command_template_id)
+
+        # pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(context, raas_pref.preferences())
+        pid_name, pid_queue, pid_dir = context.scene.raas_config_functions.call_get_current_pid_info(context, raas_pref.preferences())
 
         file = task['TemplateParameterValues'][0]['ParameterValue']
 
@@ -542,7 +548,9 @@ def CmdCreateSLURMJob(context):
     return cmd
 
 def CmdCreateJob(context):
-    scheduler = raas_config.GetSchedulerFromContext(context)
+    #scheduler = raas_config.GetSchedulerFromContext(context)
+    scheduler = context.scene.raas_config_functions.call_get_scheduler_from_context(context)
+
 
     if scheduler == 'SLURM':
         return CmdCreateSLURMJob(context)
@@ -606,7 +614,8 @@ def CmdCreateStatSLURMJobFile(context, slurm_jobs):
     return cmd
 
 def CmdCreateStatJobFile(context, slurm_jobs):
-    scheduler = raas_config.GetSchedulerFromContext(context)
+    #scheduler = raas_config.GetSchedulerFromContext(context)
+    scheduler = context.scene.raas_config_functions.call_get_scheduler_from_context(context)
 
     if scheduler == 'SLURM':
         return CmdCreateStatSLURMJobFile(context, slurm_jobs)

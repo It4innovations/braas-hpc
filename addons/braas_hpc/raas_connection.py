@@ -132,24 +132,16 @@ def get_project_group(context):
     return project_group
 
 def get_direct_access_remote_storage(context):
-    pref = raas_pref.preferences()
+    # pref = raas_pref.preferences()
     project_group = get_project_group(context)
 
-    pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-        context, raas_pref.preferences())
+    #pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(context, raas_pref.preferences())
+    pid_name, pid_queue, pid_dir = context.scene.raas_config_functions.call_get_current_pid_info(context, raas_pref.preferences())
 
-    return raas_config.GetDAClusterPath(context, pid_dir, pid_name.lower()) \
-        + '/' + project_group + '/' + context.scene.raas_blender_job_info_new.cluster_type.lower()
+    #path = raas_config.GetDAClusterPath(context, pid_dir, pid_name.lower())
+    path = context.scene.raas_config_functions.call_get_da_cluster_path(context, pid_dir, pid_name.lower())
 
-# def get_project_group_path(context):
-#     pref = raas_pref.preferences()
-#     project_group = get_project_group(context)
-
-#     pid_name, pid_queue, pid_dir = raas_config.GetCurrentPidInfo(
-#         context, raas_pref.preferences())
-
-#     return raas_config.GetDAClusterPath(context, pid_dir, pid_name.lower()) \
-#         + '/' + project_group
+    return path + '/' + project_group + '/' + context.scene.raas_blender_job_info_new.cluster_type.lower()
 
 def CmdCreateProjectGroupFolder(context):
     cmd = 'mkdir -p ' + get_direct_access_remote_storage(context)
@@ -1635,7 +1627,8 @@ async def transfer_files(context, fileTransfer, job_local_dir: str, job_remote_d
     prefs = raas_pref.preferences()
     preset = prefs.cluster_presets[bpy.context.scene.raas_cluster_presets_index]
 
-    serverHostname = raas_config.GetDAServer(context)
+    # serverHostname = raas_config.GetDAServer(context)
+    serverHostname = context.scene.raas_config_functions.call_get_da_server(context)
     cmd = CmdCreateProjectGroupFolder(context)
     
     await ssh_command(serverHostname, cmd, preset)
