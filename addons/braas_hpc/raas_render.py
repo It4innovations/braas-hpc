@@ -260,6 +260,10 @@ class RAAS_PG_SubmittedJobInfoExt(PropertyGroup):
     AllParameters : bpy.props.StringProperty(name="allParameters") # type: ignore
     Tasks: bpy.props.StringProperty(name="Tasks") # type: ignore
     ClusterName: bpy.props.StringProperty(name="Cluster Name") # type: ignore
+    # JobType: bpy.props.StringProperty(name="Job Type") # type: ignore
+        
+    # Alternative: Store job info as JSON string (simpler, more reliable)
+    blender_job_info_json : bpy.props.StringProperty(name="Blender Job Info JSON") # type: ignore
 
     #statePre : bpy.props.StringProperty(name="State Pre")
     #stateRen : bpy.props.StringProperty(name="State Ren")
@@ -402,6 +406,7 @@ class RAAS_OT_download_files(
             try:
                 item = context.scene.raas_list_jobs[idx]
 
+                # Start file transfer
                 fileTransfer = await raas_connection.start_transfer_files(context, item.Id, self.token)
  
                 # Download output files
@@ -416,6 +421,13 @@ class RAAS_OT_download_files(
                 
                 await raas_connection.transfer_files_from_cluster(context, fileTransfer, remote_storage_log, str(local_storage_log), item.Id, self.token)
 
+                # Download job info files
+                remote_storage_job = raas_connection.convert_path_to_linux(item.Name) + '/job'
+                local_storage_job = raas_connection.get_job_local_storage(item.Name)
+                
+                await raas_connection.transfer_files_from_cluster(context, fileTransfer, remote_storage_job, str(local_storage_job), item.Id, self.token)
+
+                # End file transfer
                 await raas_connection.end_transfer_files(context, fileTransfer, item.Id, self.token)
             
             except Exception as e:
@@ -470,6 +482,155 @@ class RAAS_OT_dash_karolina(
 #         webbrowser.open('https://extranet.it4i.cz/grafana', new=2)
 
 #         self.quit()
+
+############################################################################
+async def submit_job_save_blendfile(context, outdir):
+    """Save to a different file, specifically for Raas.
+
+    We shouldn't overwrite the artist's file.
+    We can compress, since this file won't be managed by SVN and doesn't need diffability.
+    """
+
+    render = context.scene.render
+
+    # Remember settings we need to restore after saving.
+    old_use_file_extension = render.use_file_extension
+    old_use_overwrite = render.use_overwrite
+    old_use_placeholder = render.use_placeholder
+
+    disable_denoiser = False
+    if disable_denoiser:
+        use_denoising = [layer.cycles.use_denoising
+                            for layer in context.scene.view_layers]
+    else:
+        use_denoising = []
+
+    #check VDB
+    # from . import bat_interface
+    # vdb_list = bat_interface.copy_vdb(outdir)
+    # for vdb in vdb_list:
+    #     vdb[0].filepath = vdb[2]
+
+    try:
+
+        # The file extension should be determined by the render settings, not necessarily
+        # by the setttings in the output panel.
+        render.use_file_extension = True
+
+        # Rescheduling should not overwrite existing frames.
+        render.use_overwrite = False
+        render.use_placeholder = False
+
+        if disable_denoiser:
+            for layer in context.scene.view_layers:
+                layer.cycles.use_denoising = False
+
+        filepath = Path(context.blend_data.filepath).with_suffix('.braas-hpc.blend')
+
+        # Step 1: First save the file
+        # self.log.info('Saving initial copy to temporary file %s', filepath)
+        bpy.ops.wm.save_as_mainfile(filepath=str(filepath),
+                                    compress=True,
+                                    copy=True)
+        
+        # Step 2: Pack all external files into the blend file
+        # self.log.info('Packing external files into blend file')
+        bpy.ops.file.pack_all()
+        
+        # Step 3: Save again with packed files
+        # self.log.info('Saving final copy with packed files to %s', filepath)
+        bpy.ops.wm.save_as_mainfile(filepath=str(filepath),
+                                    compress=True,
+                                    copy=True)
+    finally:
+        # Restore the settings we changed, even after an exception.
+        # for vdb in vdb_list:
+        #     vdb[0].filepath = vdb[1]
+
+        render.use_file_extension = old_use_file_extension
+        render.use_overwrite = old_use_overwrite
+        render.use_placeholder = old_use_placeholder
+
+        if disable_denoiser:
+            for denoise, layer in zip(use_denoising, context.scene.view_layers):
+                layer.cycles.use_denoising = denoise
+
+        #filepath_orig = Path(context.blend_data.filepath).with_suffix('.blend')
+        #bpy.ops.wm.save_mainfile(filepath=str(context.blend_data.filepath))
+
+    return filepath
+
+async def submit_job_bat_pack(filepath, project, outdir):
+    """BAT-packs the blendfile to the destination directory.
+
+    Returns the path of the destination blend file.
+
+    :param job_id: the job ID given to us by Raas Server.
+    :param filepath: the blend file to pack (i.e. the current blend file)
+    :returns: A tuple of:
+        - The destination directory, or None if it does not exist on a
+            locally-reachable filesystem (for example when sending files to
+            a Shaman server).
+        - The destination blend file, or None if there were errors BAT-packing,
+        - A list of missing paths.
+    """
+
+    from datetime import datetime
+    #from . import bat_interface
+
+    prefs = raas_pref.preferences()
+
+    #proj_abspath = bpy.path.abspath(prefs.raas_project_local_path)
+    proj_abspath = bpy.path.abspath('//./')
+    projdir = Path(proj_abspath).resolve()
+    exclusion_filter = '*.vdb' #(prefs.raas_exclude_filter or '').strip()
+    relative_only = False #prefs.raas_relative_only
+
+    # self.log.debug('projdir: %s', projdir)
+
+    # dt = datetime.now().isoformat('-').replace(':', '').replace('.', '')
+    # unique_dir = '%s-%s' % (dt[0:19], project)
+    # outdir = Path(prefs.raas_job_storage_path) / unique_dir / 'in'
+
+    # self.log.debug('outdir : %s', outdir)
+
+    # try:
+    #     outdir.mkdir(parents=True)
+    # except Exception as ex:
+    #     self.log.exception('Unable to create output path %s', outdir)
+    #     self.report({'ERROR'}, 'Unable to create output path: %s' % ex)
+    #     self.quit()
+    #     return outdir, None, []
+
+    # try:
+    #     outfile, missing_sources = await bat_interface.copy(
+    #         bpy.context, filepath, projdir, outdir, exclusion_filter,
+    #         relative_only=relative_only)
+    # except bat_interface.FileTransferError as ex:
+    #     self.log.error('Could not pack %d files, starting with %s',
+    #                    len(ex.files_remaining), ex.files_remaining[0])
+    #     self.report({'ERROR'}, 'Unable to pack %d files' % len(ex.files_remaining))
+    #     bpy.context.window_manager.raas_status = "ERROR"
+    #     bpy.context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
+
+    #     self.quit()
+    #     return None
+    # except bat_interface.Aborted:
+    #     self.log.warning('BAT Pack was aborted')
+    #     self.report({'WARNING'}, 'Aborted Raas file packing/transferring')
+    #     self.quit()
+    #     return None
+
+    # Step 4: Copy the packed file to the output directory        
+    final_filepath = outdir / Path(filepath).name
+    # self.log.info('Copying packed file from %s to %s', filepath, final_filepath)
+    import shutil
+    shutil.copy2(str(filepath), str(final_filepath))
+
+    missing_sources = None
+    bpy.context.window_manager.raas_status = 'PARTIAL_DONE'
+    return missing_sources
+############################################################################
 
 class RAAS_OT_submit_job(
                         async_loop.AsyncModalOperatorMixin,
@@ -546,15 +707,15 @@ class RAAS_OT_submit_job(
             from datetime import datetime
             dt = datetime.now().isoformat('-').replace(':', '').replace('.', '')
             unique_dir = '%s-%s' % (dt[0:19], context.scene.raas_blender_job_info_new.job_project)
-            outdir = Path(prefs.raas_job_storage_path) / unique_dir / 'in'
-            outdir.mkdir(parents=True)
+            outdir_in = Path(prefs.raas_job_storage_path) / unique_dir / 'in'
+            outdir_in.mkdir(parents=True)
 
             missing_sources = None
 
             if context.scene.raas_blender_job_info_new.file_type == 'DEFAULT':
                 # Save to a different file, specifically for Raas.
                 context.window_manager.raas_status = 'SAVING'
-                filepath = await self._save_blendfile(context, outdir)
+                filepath = await submit_job_save_blendfile(context, outdir_in)
                 context.scene.raas_blender_job_info_new.blendfile = filepath.name
 
             else: #OTHER
@@ -562,7 +723,7 @@ class RAAS_OT_submit_job(
 
             if context.scene.raas_blender_job_info_new.file_type == 'DEFAULT':
                 # BAT-pack the files to the destination directory.
-                missing_sources = await self.bat_pack(filepath, context.scene.raas_blender_job_info_new.job_project, outdir)
+                missing_sources = await submit_job_bat_pack(filepath, context.scene.raas_blender_job_info_new.job_project, outdir_in)
 
                 # remove files
                 self.log.info("Removing temporary file %s", filepath)
@@ -570,7 +731,47 @@ class RAAS_OT_submit_job(
             else:                  
 
                 from distutils.dir_util import copy_tree
-                copy_tree(bpy.path.abspath(context.scene.raas_blender_job_info_new.blendfile_dir), str(outdir))
+                copy_tree(bpy.path.abspath(context.scene.raas_blender_job_info_new.blendfile_dir), str(outdir_in))
+
+            ###################### Save Job Info
+            import json
+            
+            # Serialize raas_blender_job_info_new to JSON
+            job_info = context.scene.raas_blender_job_info_new
+            job_info_dict = {
+                'job_name': job_info.job_name,
+                'job_email': job_info.job_email,
+                'job_project': job_info.job_project,
+                'job_walltime': job_info.job_walltime,
+                'job_walltime_pre': job_info.job_walltime_pre,
+                'job_walltime_post': job_info.job_walltime_post,
+                'max_jobs': job_info.max_jobs,
+                'job_arrays': job_info.job_arrays,
+                'job_type': job_info.job_type,
+                'job_remote_dir': job_info.job_remote_dir,
+                'job_allocation': job_info.job_allocation,
+                'job_partition': job_info.job_partition,
+                'frame_start': job_info.frame_start,
+                'frame_end': job_info.frame_end,
+                'frame_current': job_info.frame_current,
+                'render_type': job_info.render_type,
+                'cluster_type': job_info.cluster_type,
+                'file_type': job_info.file_type,
+                'blendfile_dir': job_info.blendfile_dir,
+                'blendfile': job_info.blendfile
+            }
+            
+            # Create job directory and save job.info file
+            outdir_job = Path(prefs.raas_job_storage_path) / unique_dir / 'job'
+            outdir_job.mkdir(parents=True, exist_ok=True)
+            job_info_path = outdir_job / 'job.info'
+            
+            with open(job_info_path, 'w') as f:
+                json.dump(job_info_dict, f, indent=4)
+
+            ######################
+            
+            # self.log.info('Job info saved to %s', job_info_path)
 
             # Image/animation info
             #context.scene.raas_blender_job_info_new.frame_step = context.scene.frame_step
@@ -619,153 +820,6 @@ class RAAS_OT_submit_job(
             context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
 
         self.quit()
-
-    async def _save_blendfile(self, context, outdir):
-        """Save to a different file, specifically for Raas.
-
-        We shouldn't overwrite the artist's file.
-        We can compress, since this file won't be managed by SVN and doesn't need diffability.
-        """
-
-        render = context.scene.render
-
-        # Remember settings we need to restore after saving.
-        old_use_file_extension = render.use_file_extension
-        old_use_overwrite = render.use_overwrite
-        old_use_placeholder = render.use_placeholder
-
-        disable_denoiser = False
-        if disable_denoiser:
-            use_denoising = [layer.cycles.use_denoising
-                             for layer in context.scene.view_layers]
-        else:
-            use_denoising = []
-
-        #check VDB
-        # from . import bat_interface
-        # vdb_list = bat_interface.copy_vdb(outdir)
-        # for vdb in vdb_list:
-        #     vdb[0].filepath = vdb[2]
-
-        try:
-
-            # The file extension should be determined by the render settings, not necessarily
-            # by the setttings in the output panel.
-            render.use_file_extension = True
-
-            # Rescheduling should not overwrite existing frames.
-            render.use_overwrite = False
-            render.use_placeholder = False
-
-            if disable_denoiser:
-                for layer in context.scene.view_layers:
-                    layer.cycles.use_denoising = False
-
-            filepath = Path(context.blend_data.filepath).with_suffix('.braas-hpc.blend')
-
-            # Step 1: First save the file
-            self.log.info('Saving initial copy to temporary file %s', filepath)
-            bpy.ops.wm.save_as_mainfile(filepath=str(filepath),
-                                        compress=True,
-                                        copy=True)
-            
-            # Step 2: Pack all external files into the blend file
-            self.log.info('Packing external files into blend file')
-            bpy.ops.file.pack_all()
-            
-            # Step 3: Save again with packed files
-            self.log.info('Saving final copy with packed files to %s', filepath)
-            bpy.ops.wm.save_as_mainfile(filepath=str(filepath),
-                                        compress=True,
-                                        copy=True)
-        finally:
-            # Restore the settings we changed, even after an exception.
-            # for vdb in vdb_list:
-            #     vdb[0].filepath = vdb[1]
-
-            render.use_file_extension = old_use_file_extension
-            render.use_overwrite = old_use_overwrite
-            render.use_placeholder = old_use_placeholder
-
-            if disable_denoiser:
-                for denoise, layer in zip(use_denoising, context.scene.view_layers):
-                    layer.cycles.use_denoising = denoise
-
-            #filepath_orig = Path(context.blend_data.filepath).with_suffix('.blend')
-            #bpy.ops.wm.save_mainfile(filepath=str(context.blend_data.filepath))
-
-        return filepath
-
-    async def bat_pack(self, filepath, project, outdir):
-        """BAT-packs the blendfile to the destination directory.
-
-        Returns the path of the destination blend file.
-
-        :param job_id: the job ID given to us by Raas Server.
-        :param filepath: the blend file to pack (i.e. the current blend file)
-        :returns: A tuple of:
-            - The destination directory, or None if it does not exist on a
-              locally-reachable filesystem (for example when sending files to
-              a Shaman server).
-            - The destination blend file, or None if there were errors BAT-packing,
-            - A list of missing paths.
-        """
-
-        from datetime import datetime
-        #from . import bat_interface
-
-        prefs = raas_pref.preferences()
-
-        #proj_abspath = bpy.path.abspath(prefs.raas_project_local_path)
-        proj_abspath = bpy.path.abspath('//./')
-        projdir = Path(proj_abspath).resolve()
-        exclusion_filter = '*.vdb' #(prefs.raas_exclude_filter or '').strip()
-        relative_only = False #prefs.raas_relative_only
-
-        self.log.debug('projdir: %s', projdir)
-
-        # dt = datetime.now().isoformat('-').replace(':', '').replace('.', '')
-        # unique_dir = '%s-%s' % (dt[0:19], project)
-        # outdir = Path(prefs.raas_job_storage_path) / unique_dir / 'in'
-
-        self.log.debug('outdir : %s', outdir)
-
-        # try:
-        #     outdir.mkdir(parents=True)
-        # except Exception as ex:
-        #     self.log.exception('Unable to create output path %s', outdir)
-        #     self.report({'ERROR'}, 'Unable to create output path: %s' % ex)
-        #     self.quit()
-        #     return outdir, None, []
-
-        # try:
-        #     outfile, missing_sources = await bat_interface.copy(
-        #         bpy.context, filepath, projdir, outdir, exclusion_filter,
-        #         relative_only=relative_only)
-        # except bat_interface.FileTransferError as ex:
-        #     self.log.error('Could not pack %d files, starting with %s',
-        #                    len(ex.files_remaining), ex.files_remaining[0])
-        #     self.report({'ERROR'}, 'Unable to pack %d files' % len(ex.files_remaining))
-        #     bpy.context.window_manager.raas_status = "ERROR"
-        #     bpy.context.window_manager.raas_status_txt = "There is an error! Check Info Editor!"
-
-        #     self.quit()
-        #     return None
-        # except bat_interface.Aborted:
-        #     self.log.warning('BAT Pack was aborted')
-        #     self.report({'WARNING'}, 'Aborted Raas file packing/transferring')
-        #     self.quit()
-        #     return None
-
-        # Step 4: Copy the packed file to the output directory        
-        final_filepath = outdir / Path(filepath).name
-        self.log.info('Copying packed file from %s to %s', filepath, final_filepath)
-        import shutil
-        shutil.copy2(str(filepath), str(final_filepath))
-
-        missing_sources = None
-        bpy.context.window_manager.raas_status = 'PARTIAL_DONE'
-        return missing_sources
 
 class RAAS_OT_abort(Operator):
     """Aborts a running Raas file packing/transfer operation.
@@ -1364,7 +1418,7 @@ async def ListSlurmJobsForCurrentUser(context, token):
         return
 
     # Parse job data
-    jobs_data = raas_jobs.slurm_parse_slurm_job_lines(res, context.scene.raas_blender_job_info_new.cluster_type)
+    jobs_data = raas_jobs.slurm_parse_slurm_job_lines(res, context.scene.raas_blender_job_info_new.cluster_type, context.scene.raas_blender_job_info_new.job_type)
     
     # Update UI
     raas_jobs.update_job_list(context, jobs_data)
@@ -1403,7 +1457,7 @@ async def ListPBSJobsForCurrentUser(context, token):
         return
 
     # Parse job data
-    jobs_data = raas_jobs.pbs_parse_pbs_job_lines(res, context.scene.raas_blender_job_info_new.cluster_type)
+    jobs_data = raas_jobs.pbs_parse_pbs_job_lines(res, context.scene.raas_blender_job_info_new.cluster_type, context.scene.raas_blender_job_info_new.job_type)
     
     # Update UI
     raas_jobs.update_job_list(context, jobs_data)
@@ -1660,6 +1714,7 @@ class RAAS_PT_ListJobs(RaasButtonsPanel, Panel):
             box.label(text=('Job: %d' % item.Id))
             box.prop(item, "Name")
             box.prop(item, "Project")
+            # box.prop(item, "JobType")
             box.prop(item, "SubmitTime")
             box.prop(item, "StartTime")
             box.prop(item, "EndTime")

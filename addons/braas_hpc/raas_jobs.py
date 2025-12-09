@@ -429,15 +429,11 @@ def CmdCreatePBSJob(context):
 
         job_env = job_env + 'work_dir=' + work_dir
 
-        custom_flags = ''
-        if command_template_id in [16, 26, 17, 27]:  # eevee on barbora or karolina
-            custom_flags += ' -l xorg=True '
+        xorg_true = ''        
+        # if command_template_id in [16, 26, 17, 27]:  # eevee on barbora or karolina
+        #     xorg_true = ' -l xorg=True '
 
-        if cluster_id in [7]: # POLARIS
-            custom_flags += ' -l filesystems=home:eagle '
-
-        if cluster_id in [8]: # AURORA
-            custom_flags += ' -l filesystems=flare '
+        custom_flags = context.scene.raas_config_functions.call_get_special_job_flags(context, cluster_id, command_template_id)
 
         #pid = raas_config.GetDAOpenCallProject(pid_name)
         pid = context.scene.raas_config_functions.call_get_da_open_call_project(pid_name)
@@ -448,7 +444,7 @@ def CmdCreatePBSJob(context):
             job_env + ' -l select=' + str(nodes) + \
             ' -N \"' + job_project + '\" -l walltime=' + walltime + ' -e ' + work_dir_stderr + \
             ' -o ' + work_dir_stdout + ' -q ' + pid_queue + job_array + \
-                    depends_on + custom_flags + ');echo $_' + str(task_id) + ';'
+                    depends_on + custom_flags + xorg_true + ');echo $_' + str(task_id) + ';'
 
         task_id = task_id + 1
 
@@ -521,26 +517,15 @@ def CmdCreateSLURMJob(context):
         job_env = job_env + 'work_dir=' + work_dir
 
         xorg_true = ''
-        if command_template_id in [16, 26, 17, 27]:  # eevee on barbora or karolina
-            xorg_true = ' --comment="use:xorg=True" '
+        # if command_template_id in [16, 26, 17, 27]:  # eevee on barbora or karolina
+        #     xorg_true = ' --comment="use:xorg=True" '
 
-        add_resources = ''  # gpu or fpga, not cpu
-        if command_template_id in [14, 16, 17, 24, 26, 27, 34, 36, 37, 44, 46, 47]:  # Barbora/Karolina/Leonardo, gpu and eevee
-            add_resources = ' --gres=gpu:1'  # fixed number of GPUs
-
-        if 'gpu' in pid_queue and context.scene.raas_blender_job_info_new.cluster_type == 'KAROLINA':
-            add_resources += ' --gpus 1'  # fixed number of GPUs
-
-        if context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5ACC':
-            add_resources += ' -c 20 --gres=gpu:1'  # fixed number of GPUs
-
-        if context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5ACC' or context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5GPP':
-            add_resources += ' -q ' + pid_queue  # fix QoS
+        custom_flags = context.scene.raas_config_functions.call_get_special_job_flags(context, cluster_id, command_template_id, pid_queue)
 
         cmd = cmd + '_' + str(task_id) + '=$(echo \' ' + script + ' ' + file + ' \' | sbatch --account ' + \
             raas_config.GetDAOpenCallProject(pid_name) + ' --export=' + job_env + ' --nodes=' + \
             str(nodes) + ' --job-name \"' + job_project + '\" --time=' + walltime + ' --partition=' + pid_queue + \
-            add_resources + ' ' + job_array + ' --error=' + work_dir_stderr + ' --output=' + work_dir_stdout + \
+            custom_flags + ' ' + job_array + ' --error=' + work_dir_stderr + ' --output=' + work_dir_stdout + \
             depends_on + xorg_true + ' ' + script + ' ' + file + '); echo ${_' + str(task_id) + '##* };'
 
         task_id = task_id + 1
@@ -669,7 +654,7 @@ def slurm_map_slurm_status(slurm_status):
     return status
 
 
-def slurm_helper_raas_dict_jobs(id, name, project, cluster_name, state = None):
+def slurm_helper_raas_dict_jobs(id, name, project, cluster_name, job_type, state = None):
     """_Creates a dictionary and fills it with chosen task details_.
 
     Args:
@@ -677,6 +662,7 @@ def slurm_helper_raas_dict_jobs(id, name, project, cluster_name, state = None):
         name (_str_): _Full task name_.
         project (_str_): _Inner task name_.
         cluster_name (_str_): _Cluster name_.
+        job_type (_str_): _Job type_.
         state (_str_, optional): _Task status_. Defaults to None.
 
     Returns:
@@ -687,6 +673,7 @@ def slurm_helper_raas_dict_jobs(id, name, project, cluster_name, state = None):
     item['Name'] = name
     item['Project'] = project
     item['ClusterName'] = cluster_name
+    # item['JobType'] = job_type
     if state is not None:
         item['State'] = state
     return item
@@ -746,7 +733,7 @@ def slurm_helper_read_slurm_job_array(lines):
         
     return final_status, index
 
-def slurm_parse_slurm_job_lines(output, cluster_type):
+def slurm_parse_slurm_job_lines(output, cluster_type, job_type):
     """Parse Slurm job output lines into job data structures.
     
     Args:
@@ -788,7 +775,7 @@ def slurm_parse_slurm_job_lines(output, cluster_type):
         # Process different types of job entries
         job_data, lines_consumed = slurm_process_job_entry(
             lines[line_idx:], job_name, elements, slurm_id_parts, 
-            cluster_type, jobs_dict, job_index
+            cluster_type, job_type, jobs_dict, job_index
         )
         
         if job_data:
@@ -811,7 +798,7 @@ def slurm_is_header_or_separator_line(elements):
             ("JobID" in elements[1] or "----" in elements[1]))
 
 
-def slurm_process_job_entry(lines, job_name, elements, slurm_id_parts, cluster_type, jobs_dict, job_index):
+def slurm_process_job_entry(lines, job_name, elements, slurm_id_parts, cluster_type, job_type, jobs_dict, job_index):
     """Process a single job entry and return job data and lines consumed.
     
     Returns:
@@ -822,26 +809,26 @@ def slurm_process_job_entry(lines, job_name, elements, slurm_id_parts, cluster_t
     
     # Check for job arrays
     if len(slurm_id_parts[0].split('_')) > 1:
-        return slurm_process_job_array(lines, job_name, elements, cluster_type, job_index)
+        return slurm_process_job_array(lines, job_name, elements, cluster_type, job_type, job_index)
     
     # Check for regular job entries
     if (len(slurm_id_parts) == 1 and len(elements) == 7 and
         "JobID" not in elements[1] and "----" not in elements[1]):
-        return slurm_process_regular_job(job_name, elements, cluster_type, job_index), 1
+        return slurm_process_regular_job(job_name, elements, cluster_type, job_type, job_index), 1
     
     # Check for submitted jobs (lines with only separators)
     if slurm_is_separator_only_line(elements, lines):
-        return slurm_process_submitted_job(job_name, elements, cluster_type, job_index), 1
+        return slurm_process_submitted_job(job_name, elements, cluster_type, job_type, job_index), 1
     
     return None, 1
 
 
-def slurm_process_job_array(lines, job_name, elements, cluster_type, job_index):
+def slurm_process_job_array(lines, job_name, elements, cluster_type, job_type, job_index):
     """Process job array entries."""
     final_status, lines_consumed = slurm_helper_read_slurm_job_array(lines)
     
     project_name = elements[2] if len(elements) > 2 else job_name.split('-')[-1]
-    job_data = slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, final_status)
+    job_data = slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, job_type, final_status)
     
     # Add timing information if available
     if len(elements) >= 7:
@@ -855,12 +842,12 @@ def slurm_process_job_array(lines, job_name, elements, cluster_type, job_index):
     return job_data, lines_consumed
 
 
-def slurm_process_regular_job(job_name, elements, cluster_type, job_index):
+def slurm_process_regular_job(job_name, elements, cluster_type, job_type, job_index):
     """Process regular job entries."""
     status = slurm_map_slurm_status(elements[3])
     project_name = elements[2]
     
-    job_data = slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, status)
+    job_data = slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, job_type, status)
     job_data.update({
         'CreationTime': elements[4],
         'SubmitTime': elements[4],
@@ -871,7 +858,7 @@ def slurm_process_regular_job(job_name, elements, cluster_type, job_index):
     return job_data
 
 
-def slurm_process_submitted_job(job_name, elements, cluster_type, job_index):
+def slurm_process_submitted_job(job_name, elements, cluster_type, job_type, job_index):
     """Process submitted job entries (jobs that haven't started yet)."""
     # Extract project name from job name
     name_parts = job_name.split('-')
@@ -880,7 +867,7 @@ def slurm_process_submitted_job(job_name, elements, cluster_type, job_index):
     else:
         project_name = job_name
     
-    return slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, 2)  # SUBMITTED
+    return slurm_helper_raas_dict_jobs(job_index, job_name, project_name, cluster_type, job_type, 2)  # SUBMITTED
 
 
 def slurm_is_separator_only_line(elements, lines):
@@ -915,6 +902,20 @@ def update_job_list(context, jobs_data):
     for job_data in reversed(jobs_data):
         item = context.scene.raas_list_jobs.add()
         raas_server.fill_items(item, job_data)
+        
+        # Load blender_job_info from job.info file
+        job_name = job_data.get('Name')
+        if job_name:
+            job_info_path = raas_connection.get_job_local_storage(job_name) / 'job' / 'job.info'
+            if job_info_path.exists():
+                try:
+                    with open(job_info_path, 'r') as f:
+                        job_info_dict = json.load(f)
+
+                    item.blender_job_info_json = json.dumps(job_info_dict)
+
+                except Exception as e:
+                    print(f"Failed to load job.info for {job_name}: {e}")
     
     # Ensure index is valid
     max_index = len(context.scene.raas_list_jobs) - 1
@@ -924,12 +925,13 @@ def update_job_list(context, jobs_data):
 
 #########################################################################################
 
-def pbs_parse_pbs_job_lines(output, cluster_type):
+def pbs_parse_pbs_job_lines(output, cluster_type, job_type):
     """Parse PBS job output lines into job data structures.
     
     Args:
         output: Raw command output
         cluster_type: Type of cluster
+        job_type: Type of job
         
     Returns:
         List of job dictionaries
@@ -959,7 +961,7 @@ def pbs_parse_pbs_job_lines(output, cluster_type):
         
         # Initialize job if not exists
         if job_name not in jobs_dict:
-            jobs_dict[job_name] = pbs_create_pbs_job_dict(job_index, job_name, cluster_type)
+            jobs_dict[job_name] = pbs_create_pbs_job_dict(job_index, job_name, cluster_type, job_type)
             jobs_data.append(jobs_dict[job_name])
             job_index += 1
         
@@ -971,7 +973,7 @@ def pbs_parse_pbs_job_lines(output, cluster_type):
     return jobs_data
 
 
-def pbs_create_pbs_job_dict(job_index, job_name, cluster_type):
+def pbs_create_pbs_job_dict(job_index, job_name, cluster_type, job_type):
     """Create initial PBS job dictionary."""
     # Extract project name from job name (after timestamp)
     name_parts = job_name.split('-')
@@ -985,6 +987,7 @@ def pbs_create_pbs_job_dict(job_index, job_name, cluster_type):
         'Name': job_name,
         'Project': project_name,
         'ClusterName': cluster_type,
+        # 'JobType': job_type,
         'State': 1,  # Default to CONFIGURING
         'CreationTime': '',
         'SubmitTime': '',

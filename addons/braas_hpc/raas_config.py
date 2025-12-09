@@ -668,6 +668,30 @@ def GetDAQueueScript(ClusterId, CommandTemplateId):
                 
     else:
         return None, None
+    
+
+def GetDAJobSpecialFlags(context, ClusterId, CommandTemplateId, pid_queue):
+    custom_flags = ''
+
+    if CommandTemplateId in [14, 16, 17, 24, 26, 27, 34, 36, 37, 44, 46, 47]:  # Barbora/Karolina/Leonardo, gpu and eevee
+        custom_flags = ' --gres=gpu:1'  # fixed number of GPUs
+
+    if 'gpu' in pid_queue and context.scene.raas_blender_job_info_new.cluster_type == 'KAROLINA':
+        custom_flags += ' --gpus 1'  # fixed number of GPUs
+
+    if context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5ACC':
+        custom_flags += ' -c 20 --gres=gpu:1'  # fixed number of GPUs
+
+    if context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5ACC' or context.scene.raas_blender_job_info_new.cluster_type == 'MARENOSTRUM5GPP':
+        custom_flags += ' -q ' + pid_queue  # fix QoS
+
+    if ClusterId in [7]: # POLARIS
+        custom_flags += ' -l filesystems=home:eagle '
+
+    if ClusterId in [8]: # AURORA
+        custom_flags += ' -l filesystems=flare '        
+
+    return custom_flags
 
 
 def GetGitAddonCommand(repository, branch):    
@@ -763,6 +787,7 @@ class RaasConfigFunctions:
         self.get_da_open_call_project = GetDAOpenCallProject
         self.get_da_queue_mpi_procs = GetDAQueueMPIProcs
         self.get_da_queue_script = GetDAQueueScript
+        self.get_special_job_flags = GetDAJobSpecialFlags
         self.get_git_addon_command = GetGitAddonCommand
         self.get_blender_install_command = GetBlenderInstallCommand
         self.get_blender_patch_command = GetBlenderPatchCommand
@@ -809,6 +834,10 @@ class RaasConfigFunctions:
     def call_get_da_queue_script(self, cluster_id, command_template_id):
         """Gets DA queue script"""
         return self.get_da_queue_script(cluster_id, command_template_id)
+    
+    def call_get_special_job_flags(self, context, cluster_id, command_template_id, pid_queue):
+        """Gets special job flags"""
+        return self.get_special_job_flags(context, cluster_id, command_template_id, pid_queue)
     
     def call_get_git_addon_command(self, repository, branch):
         """Gets git addon command"""
