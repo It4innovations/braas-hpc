@@ -1,4 +1,4 @@
-# BRaaS-HPC (Blender Rendering-as-a-Service for HPC)
+# BRaaS-HPC (Bheappe Add-on v. 2.0) - Blender Rendering-as-a-Service for HPC
 
 #### BLENDER ADD-ON TO EXTEND ITS CAPABILITIES IN TERMS OF RENDERING ON AN HPC CLUSTER
 
