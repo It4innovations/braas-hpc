@@ -18,7 +18,7 @@ REM ######################################################################
 
 REM Download Blender 4.5.5 for Linux
 echo Downloading Blender 4.5.5 for Linux...
-powershell -Command "Invoke-WebRequest -Uri 'https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.5-linux-x64.tar.xz' -OutFile 'blender-4.5.5-linux-x64.tar.xz'"
+REM powershell -Command "Invoke-WebRequest -Uri 'https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.5-linux-x64.tar.xz' -OutFile 'blender-4.5.5-linux-x64.tar.xz'"
 
 REM Transfer Blender archive to MareNostrum5 cluster
 echo Transferring Blender archive to MareNostrum5...
@@ -32,15 +32,17 @@ REM ######################################################################
 
 REM Download braas-hpc for Linux
 echo Downloading braas-hpc for Linux...
-powershell -Command "Invoke-WebRequest -Uri 'https://github.com/It4innovations/braas-hpc/-/archive/main/braas-hpc-main.tar.gz' -OutFile 'braas-hpc-main.tar.gz'"
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/It4innovations/braas-hpc/archive/refs/heads/main.zip' -OutFile 'braas-hpc-main.zip'"
 
 REM Transfer braas-hpc archive to MareNostrum5 cluster
 echo Transferring braas-hpc archive to MareNostrum5...
-scp braas-hpc-main.tar.gz MareNostrum5:~/braas-hpc.tar.gz
+scp braas-hpc-main.zip MareNostrum5:~/braas-hpc.zip
 
 REM Run the Linux installation script
 echo Running installation script on MareNostrum5...
-ssh MareNostrum5 "if [ -d ~/braas-hpc ] ; then rm -rf ~/braas-hpc ; fi ; cd ~/ ; tar -xf braas-hpc.tar.gz ; mv braas-hpc-main ~/braas-hpc ; rm braas-hpc.tar.gz ;"
+ssh MareNostrum5 "if [ -d ~/braas-hpc ] ; then rm -rf ~/braas-hpc ; fi ; cd ~/ ; unzip braas-hpc.zip ; mv braas-hpc-main ~/braas-hpc ; rm braas-hpc.zip ;"
 
 REM ######################################################################
 echo Installation completed.
+
+pause
