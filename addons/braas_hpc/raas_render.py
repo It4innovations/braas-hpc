@@ -1739,19 +1739,21 @@ class RAAS_PT_ListJobs(RaasButtonsPanel, Panel):
 
 ######################CLEANUP###########################  
 @bpy.app.handlers.persistent
-def cleanup_on_exit():
+def cleanup_on_exit(dummy=None, *args):
     """Cleanup SSH connections and tunnels when Blender exits"""
     try:
         if hasattr(bpy.context.scene, 'raas_session'):
             session = bpy.context.scene.raas_session
             if session:
+                print("[cleanup_on_exit] Closing SSH connections...")
                 # session.close_ssh_tunnel()
-                session.close_ssh_command()
-                session.close_ssh_command_jump()
-                session.paramiko_close()                
+                # session.close_ssh_command()
+                # session.close_ssh_command_jump()
+                session.paramiko_close()
+                print("[cleanup_on_exit] SSH connections closed successfully")
 
     except Exception as e:
-        print(f"Error during cleanup: {e}")
+        print(f"[cleanup_on_exit] Error during cleanup: {e}")
 
 #################################################
 

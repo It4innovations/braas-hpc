@@ -172,6 +172,11 @@ class SSHProcess:
         self._proc: subprocess.Popen | None = None
         self._watcher: threading.Thread | None = None
         self._stop_evt = threading.Event()
+        
+        # Output capture for debugging
+        self._stdout_buffer = []
+        self._stderr_buffer = []
+        self._max_buffer_lines = 100  # Keep last 100 lines
 
         if not shutil.which(self.ssh_path):
             raise RuntimeError(f"OpenSSH client '{self.ssh_path}' was not found in PATH.")
@@ -233,48 +238,112 @@ class SSHProcess:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            bufsize=1,  # Line buffered
             creationflags=creationflags,
-            text=True
+            text=True,
+            # env={**os.environ, 'PYTHONUNBUFFERED': '1'}  # Force Python unbuffered output
         )
         
         if is_verbose_debug():
             print(f"SSH process started with PID: {self._proc.pid}")
 
+    def _log_output(self, stream_name: str, output: str):
+        """Log output with timestamp and process info."""
+        if not output:
+            return
+            
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        prefix = f"[{timestamp}] [{self.__class__.__name__}] [{stream_name}]"
+        
+        for line in output.splitlines():
+            if line.strip():
+                log_msg = f"{prefix}: {line}"
+                print(log_msg)
+                
+                # Store in buffer
+                if stream_name == "STDOUT":
+                    self._stdout_buffer.append(line)
+                    if len(self._stdout_buffer) > self._max_buffer_lines:
+                        self._stdout_buffer.pop(0)
+                else:
+                    self._stderr_buffer.append(line)
+                    if len(self._stderr_buffer) > self._max_buffer_lines:
+                        self._stderr_buffer.pop(0)
+    
     def _read_output(self):
         """Read and print any available output from the process."""
-        if self._proc and self._proc.stdout:
+        if not self._proc:
+            return
+            
+        # Use select for non-blocking check on Unix, peek on Windows
+        if platform.system() != "Windows":
+            import select
             try:
-                # Non-blocking read of available output
-                import select
-                if platform.system() != "Windows":
-                    # Unix-like systems can use select
-                    if select.select([self._proc.stdout], [], [], 0)[0]:
-                        line = self._proc.stdout.readline()
-                        if line and is_verbose_debug():
-                            print(f"SSH stdout: {line.strip()}")
-                # For Windows or when output is available
+                readable = []
+                if self._proc.stdout:
+                    readable.append(self._proc.stdout)
                 if self._proc.stderr:
-                    if platform.system() != "Windows":
-                        if select.select([self._proc.stderr], [], [], 0)[0]:
-                            line = self._proc.stderr.readline()
+                    readable.append(self._proc.stderr)
+                
+                if readable:
+                    # Check what's readable with 0 timeout (non-blocking)
+                    ready, _, _ = select.select(readable, [], [], 0)
+                    
+                    for stream in ready:
+                        try:
+                            line = stream.readline()
                             if line:
-                                print(f"SSH stderr: {line.strip()}")
+                                if stream == self._proc.stdout:
+                                    self._log_output("STDOUT", line.rstrip())
+                                else:
+                                    self._log_output("STDERR", line.rstrip())
+                        except:
+                            pass
             except:
                 pass
+        else:
+            # Windows: just try reading (with line buffering this should work)
+            if self._proc.stdout:
+                try:
+                    # Peek to check if data is available (Windows specific)
+                    import msvcrt
+                    # On Windows, readline() with line buffering should not block if data is available
+                    # We can't reliably peek pipes on Windows, so we just try reading
+                    line = self._proc.stdout.readline()
+                    if line:
+                        self._log_output("STDOUT", line.rstrip())
+                except:
+                    pass
+                    
+            if self._proc.stderr:
+                try:
+                    line = self._proc.stderr.readline()
+                    if line:
+                        self._log_output("STDERR", line.rstrip())
+                except:
+                    pass
 
     def _watch_loop(self):
         """Monitor the SSH process and restart if needed."""
         while not self._stop_evt.wait(self.check_interval_sec):
+            # Read any available output
             self._read_output()
-            if not self._is_healthy():
-                self._restart()
+            
+            # Check health and restart only if auto_restart is enabled
+            if self.auto_restart:
+                if not self._is_healthy():
+                    self._restart()
 
     def _restart(self):
         """Restart the SSH process."""
+        print(f"[{self.__class__.__name__}] Restarting SSH process...")
         self._kill_proc()
         try:
-            self.start()
-        except Exception:
+            self._start_process()
+            print(f"[{self.__class__.__name__}] SSH process restarted successfully")
+        except Exception as e:
+            print(f"[{self.__class__.__name__}] Failed to restart SSH process: {e}")
             # short backoff loop; avoid excessive logging
             time.sleep(max(self.check_interval_sec, 2.0))
 
@@ -282,11 +351,10 @@ class SSHProcess:
         """Start the SSH process. Override in subclasses for custom initialization."""
         self._start_process()
 
-        # watcher (optional auto-restart)
+        # Start watcher thread for output monitoring and optional auto-restart
         self._stop_evt.clear()
-        if self.auto_restart:
-            self._watcher = threading.Thread(target=self._watch_loop, daemon=True)
-            self._watcher.start()
+        self._watcher = threading.Thread(target=self._watch_loop, daemon=True)
+        self._watcher.start()
 
     def stop(self):
         """Stop the SSH process and cleanup."""
@@ -305,182 +373,30 @@ class SSHProcess:
 
     def __del__(self):
         self.stop()
-
-class SSHCommand(SSHProcess):
-    """
-    SSH command execution using native OpenSSH.
-    - Execute commands on remote host
-    - Capture stdout/stderr
-    - Support for long-running commands (infinite loops)
-    """
-    def __init__(
-        self,
-        user_host: str,                 # e.g. "user@remote-host"
-        local_port: int,
-        remote_host: str,
-        remote_port: int,        
-        command: str,                   # command to execute
-        identity_file: str | None = None,
-        ssh_path: str | None = None,    # path to ssh binary, default is found in PATH
-        extra_ssh_opts: list[str] | None = None,
-        auto_restart: bool = False      # Auto-restart for long-running commands
-    ):
-        super().__init__(
-            user_host=user_host,
-            identity_file=identity_file,
-            auto_restart=auto_restart,
-            check_interval_sec=5.0 if auto_restart else 0,
-            ssh_path=ssh_path,
-            extra_ssh_opts=extra_ssh_opts
-        )
-        self.command = command
-        self.local_port = local_port
-        self.remote_host = remote_host
-        self.remote_port = remote_port
-
-        self._stdout: str | None = None
-        self._stderr: str | None = None
-        self._returncode: int | None = None
-
-    def _build_cmd(self) -> list[str]:
-        cmd = [
-            self.ssh_path,
-            "-T",                     # no TTY
-            "-o", "StrictHostKeyChecking=no",  # auto-accept host keys
-            "-o", "UserKnownHostsFile=/dev/null",  # don't save host keys
-            "-o", "ServerAliveInterval=30",
-            "-o", "ServerAliveCountMax=3",
-            "-o", "TCPKeepAlive=yes",
-            "-L", f"{self.local_port}:{self.remote_host}:{self.remote_port}",
-        ]
-
-        if self.identity_file:
-            cmd += ["-i", self.identity_file]
-
-        # Add extra options (e.g., ProxyJump, Port, etc.)
-        cmd += self.extra_ssh_opts
-
-        cmd.append(self.user_host)
-        # Wrap command in bash -c to properly handle shell metacharacters
-        # cmd.append("bash")
-        # cmd.append("-c")
-        cmd.append(self.command)
-        return cmd
-
-    def start(self):
-        """Start the SSH command process and keep it running (for long-running commands)."""
-        super().start()
-
-    def execute(self, timeout: float | None = None) -> tuple[str, str, int]:
-        """
-        Execute the SSH command synchronously and return (stdout, stderr, returncode).
-        Use this for short-lived commands that complete.
-        
-        Args:
-            timeout: Maximum time to wait for command completion
-            
-        Returns:
-            Tuple of (stdout, stderr, returncode)
-        """
-        self._start_process()
-        
-        try:
-            stdout, stderr = self._proc.communicate(timeout=timeout)
-            self._stdout = stdout
-            self._stderr = stderr
-            self._returncode = self._proc.returncode
-        except subprocess.TimeoutExpired:
-            self._kill_proc()
-            raise TimeoutError(f"SSH command timed out after {timeout}s")
-        finally:
-            self._proc = None
-        
-        return self._stdout, self._stderr, self._returncode
-
-    @property
-    def stdout(self) -> str | None:
-        """Get stdout from last execution."""
-        return self._stdout
-
-    @property
-    def stderr(self) -> str | None:
-        """Get stderr from last execution."""
-        return self._stderr
-
-    @property
-    def returncode(self) -> int | None:
-        """Get return code from last execution."""
-        return self._returncode
     
-    def is_running(self) -> bool:
-        """Check if the SSH command process is currently running."""
-        return self._is_healthy()
-
-
-class SSHCommandJump(SSHCommand):
-    """
-    SSH command execution through a jump host using ProxyJump.
-    - Execute commands on remote host via jump host
-    - Support for long-running commands (infinite loops)
-    - Automatic ProxyJump configuration
-    """
-    def __init__(
-        self,
-        user_host: str,                 # e.g. "user@remote-host" (final destination)
-        jump_host: str,                 # e.g. "user@jump-host" (intermediate host)
-        local_port: int,
-        remote_port: int,
-        command: str,                   # command to execute
-        identity_file: str | None = None,
-        ssh_path: str | None = None,
-        extra_ssh_opts: list[str] | None = None,
-        auto_restart: bool = False
-    ):
-        # Don't call super().__init__ yet, we need to set jump_host first
-        self.jump_host = jump_host
-        self.local_port = int(local_port)
-        self.remote_port = int(remote_port)
-        #self.remote_host = remote_host       
+    def get_stdout(self) -> list[str]:
+        """Get captured stdout lines."""
+        return self._stdout_buffer.copy()
+    
+    def get_stderr(self) -> list[str]:
+        """Get captured stderr lines."""
+        return self._stderr_buffer.copy()
+    
+    def print_status(self):
+        """Print current process status and recent output."""
+        status = "RUNNING" if self._is_healthy() else "STOPPED"
+        print(f"[{self.__class__.__name__}] Status: {status}")
+        print(f"[{self.__class__.__name__}] User@Host: {self.user_host}")
         
-        # Now call parent constructor
-        super().__init__(
-            user_host=user_host,
-            local_port=local_port,
-            remote_host="localhost",
-            remote_port=remote_port,          
-            command=command,
-            identity_file=identity_file,
-            ssh_path=ssh_path,
-            extra_ssh_opts=extra_ssh_opts,
-            auto_restart=auto_restart
-        )
-
-    def _build_cmd(self) -> list[str]:
-        """Build SSH command with ProxyJump."""
-        cmd = [
-            self.ssh_path,
-            "-T",                     # no TTY
-            "-J", self.jump_host,     # ProxyJump through jump host
-            "-o", "StrictHostKeyChecking=no",  # auto-accept host keys
-            "-o", "UserKnownHostsFile=/dev/null",  # don't save host keys
-            "-o", "ServerAliveInterval=30",
-            "-o", "ServerAliveCountMax=3",
-            "-o", "TCPKeepAlive=yes",
-            "-L", f"{self.local_port}:localhost:{self.remote_port}",
-        ]
-
-        if self.identity_file:
-            cmd += ["-i", self.identity_file]
-
-        # Add extra options
-        cmd += self.extra_ssh_opts
-
-        cmd.append(self.user_host)
-        # Wrap command in bash -c to properly handle shell metacharacters
-        # cmd.append("bash")
-        # cmd.append("-c")
-        cmd.append(self.command)
-        return cmd        
+        if self._stdout_buffer:
+            print(f"[{self.__class__.__name__}] Recent STDOUT (last {len(self._stdout_buffer)} lines):")
+            for line in self._stdout_buffer[-10:]:  # Last 10 lines
+                print(f"  {line}")
+        
+        if self._stderr_buffer:
+            print(f"[{self.__class__.__name__}] Recent STDERR (last {len(self._stderr_buffer)} lines):")
+            for line in self._stderr_buffer[-10:]:  # Last 10 lines
+                print(f"  {line}")
 
 #############################################################################
 class RaasSession:
@@ -496,8 +412,6 @@ class RaasSession:
         self.password = None 
         self.password_2fa = None
         self.use_password = None
-        self.ssh_command_proc = None
-        self.ssh_command_jump_proc = None
 
     def is_alive(self, server=None, client_type=None):
         """Check if SSH connection is alive for a specific server (supports both Paramiko and AsyncSSH)"""
@@ -871,58 +785,6 @@ class RaasSession:
             else:
                 bpy.ops.wm.raas_password_input('INVOKE_DEFAULT')
                 raise Exception("Password required")
-
-    def create_ssh_command(self, key_file, destination, local_port, remote_host, remote_port, command):
-        """create_ssh_command - Start a long-running SSH command process"""
-
-        if not self.ssh_command_proc is None:
-            self.ssh_command_proc.stop()
-            self.ssh_command_proc = None
-
-        self.ssh_command_proc = SSHCommand(
-            user_host=destination,
-            local_port=local_port,
-            remote_host=remote_host,
-            remote_port=remote_port,
-            command=command,
-            identity_file=key_file
-        )
-
-        # Start the command process (it will keep running in background)
-        self.ssh_command_proc.start()
-
-    def close_ssh_command(self):
-        """close_ssh_command - Stop/kill the running SSH command process"""
-
-        if not self.ssh_command_proc is None:
-            self.ssh_command_proc.stop()
-            self.ssh_command_proc = None
-
-    def create_ssh_command_jump(self, key_file, jump_host, destination, local_port, remote_port, command):
-        """create_ssh_command_jump - Start a long-running SSH command process through a jump host"""
-
-        if not self.ssh_command_jump_proc is None:
-            self.ssh_command_jump_proc.stop()
-            self.ssh_command_jump_proc = None
-
-        self.ssh_command_jump_proc = SSHCommandJump(
-            user_host=destination,
-            jump_host=jump_host,
-            local_port=local_port,
-            remote_port=remote_port,
-            command=command,
-            identity_file=key_file
-        )
-
-        # Start the command process (it will keep running in background)
-        self.ssh_command_jump_proc.start()
-
-    def close_ssh_command_jump(self):
-        """close_ssh_command_jump - Stop/kill the running SSH command process with jump host"""
-
-        if not self.ssh_command_jump_proc is None:
-            self.ssh_command_jump_proc.stop()
-            self.ssh_command_jump_proc = None
 
 ##################################################################################
 ##################################################################################    
