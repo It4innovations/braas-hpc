@@ -1782,7 +1782,8 @@ def register():
     scene.raas_total_core_hours_usage = bpy.props.IntProperty(default=0)
     
     scene.raas_session = raas_connection.RaasSession()
-    scene.raas_config_functions = raas_config.RaasConfigFunctions()
+    if not hasattr(scene, 'raas_config_functions'):
+        scene.raas_config_functions = raas_config.RaasConfigFunctions()
     #################################       
 
     bpy.types.WindowManager.raas_status = EnumProperty(

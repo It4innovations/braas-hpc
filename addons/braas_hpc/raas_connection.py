@@ -348,8 +348,9 @@ class SSHCommand(SSHProcess):
             "-T",                     # no TTY
             "-o", "StrictHostKeyChecking=no",  # auto-accept host keys
             "-o", "UserKnownHostsFile=/dev/null",  # don't save host keys
-            "-o", "ServerAliveInterval=20",
+            "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3",
+            "-o", "TCPKeepAlive=yes",
             "-L", f"{self.local_port}:{self.remote_host}:{self.remote_port}",
         ]
 
@@ -462,8 +463,9 @@ class SSHCommandJump(SSHCommand):
             "-J", self.jump_host,     # ProxyJump through jump host
             "-o", "StrictHostKeyChecking=no",  # auto-accept host keys
             "-o", "UserKnownHostsFile=/dev/null",  # don't save host keys
-            "-o", "ServerAliveInterval=20",
+            "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3",
+            "-o", "TCPKeepAlive=yes",
             "-L", f"{self.local_port}:localhost:{self.remote_port}",
         ]
 
