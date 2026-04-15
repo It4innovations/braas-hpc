@@ -37,7 +37,7 @@ if [ ${#work_dir} -ge 1  ]; then
     qstat -fx ${depends_on} > ${work_dir}.job
     echo '   ' ftime = $(date) >> ${work_dir}.job
   else
-    sed -i 's/job_state = R/job_state = E/g' ${work_dir}.job
+    sed -i 's/job_state = R/job_state = C/g' ${work_dir}.job
     echo '   ' ftime = $(date) >> ${work_dir}.job
   fi
 fi

@@ -4,18 +4,19 @@ set +e
 ###############################################
 BLEND_FILE=$@
 ###############################################
-if [ ${frame_start} == ${frame_end}  ]; then
-  FRAME=${frame_start}
-  FRAME_CMD="--render-frame ${FRAME}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Set ANIMATION variable based on frame range
+if [ "${frame_start}" == "${frame_end}" ]; then
+  ANIMATION=false
 else
-  #FRAME=$(( ( ${SLURM_ARRAY_TASK_ID} - 1 ) + ${frame_start} ))
-  FRAME=$(( ( ${PBS_ARRAY_INDEX} - 1 ) + ${frame_start} ))
-  FRAME_CMD="-s ${FRAME} -e ${frame_end} -j ${max_jobs} -a"
+  ANIMATION=true
 fi
+
+${SCRIPT_DIR}/job_init.sh ${BLEND_FILE}
 ###############################################
-if [ ${#job_arrays} -ge 1  ]; then
-  #FRAME=${SLURM_ARRAY_TASK_ID}
-  FRAME=${PBS_ARRAY_INDEX}
+if [ "${ANIMATION}" = "false" ]; then
+  FRAME=${frame_start}
   FRAME_CMD="--render-frame ${FRAME}"
 fi
 ###############################################
@@ -25,7 +26,6 @@ if [ ${#work_dir} -ge 1  ]; then
   cd job
 
   if [ ${frame_start} == ${FRAME}  ]; then  
-    #sacct --format=JobID%20,Jobname%50,state,Submit,start,end -j ${SLURM_JOBID} | grep -v "\." > ${work_dir}.job
     qstat -fx ${PBS_JOBID} > ${work_dir}.job
   fi  
 fi
@@ -37,10 +37,12 @@ IN_DIR=${ROOT_DIR}/in
 OUT_DIR=${ROOT_DIR}/out
 CACHE_DIR=${ROOT_DIR}/cache
 
-LOG=${LOG_DIR}/${FRAME}.log
-ERR=${LOG_DIR}/${FRAME}.err
-LOG_XORG=${LOG_DIR}/${FRAME}_XORG.log
-ERR_XORG=${LOG_DIR}/${FRAME}_XORG.err
+if [ "${ANIMATION}" = "false" ]; then
+  LOG=${LOG_DIR}/${FRAME}.log
+  ERR=${LOG_DIR}/${FRAME}.err
+  LOG_XORG=${LOG_DIR}/${FRAME}_XORG.log
+  ERR_XORG=${LOG_DIR}/${FRAME}_XORG.err
+fi
 
 ###############################################
 
@@ -50,18 +52,15 @@ mkdir -p ${OUT_DIR}
 mkdir -p ${CACHE_DIR}
 
 ###############################################
-# Check if the nodelist exists
-# if [ -z "$SLURM_NODELIST" ]; then
-#     echo "Running on login node. Exiting script." >> ${ERR}
-#     exit 0  # Exit the script
-# else
-#     echo "Running on $SLURM_NODELIST" >> ${LOG}
-# fi
-###############################################
+
+if [ "${ANIMATION}" = "false" ]; then
+  #~/blender/blender --factory-startup --enable-autoexec -noaudio --background ${IN_DIR}/${BLEND_FILE} -E CYCLES -P ${SCRIPT_DIR}/use_gpu.py --render-output ${OUT_DIR}/###### ${FRAME_CMD} >> ${LOG} 2>> ${ERR}
+  ~/blender/blender --factory-startup --enable-autoexec -noaudio --background ${IN_DIR}/${BLEND_FILE} -E CYCLES --render-output ${OUT_DIR}/###### ${FRAME_CMD} >> ${LOG} 2>> ${ERR}
+else
+  export BLEND_FILE frame_start frame_end max_jobs use_mpi
+  export IN_DIR OUT_DIR LOG_DIR SCRIPT_DIR
+  mpirun ${SCRIPT_DIR}/mpi_cpu_bind.sh
+fi
 
 ###############################################
-#ml cuda
-###############################################
-~/blender/blender --factory-startup --enable-autoexec -noaudio --background ${IN_DIR}/${BLEND_FILE} -E CYCLES --render-output ${OUT_DIR}/###### ${FRAME_CMD} >> ${LOG} 2>> ${ERR}
-
-
+${SCRIPT_DIR}/job_finish.sh ${BLEND_FILE}
