@@ -223,7 +223,7 @@ class RAAS_PG_BlenderJobInfo(PropertyGroup):
     job_walltime_pre : bpy.props.IntProperty(name="Walltime Preprocessing [minutes]",default=10,min=1,max=2880) # type: ignore
     job_walltime_post : bpy.props.IntProperty(name="Walltime Postprocessing [minutes]",default=10,min=1,max=2880) # type: ignore
     #job_nodes : bpy.props.IntProperty(name="Nodes",default=1,min=1,max=8)  # type: ignore
-    max_jobs : bpy.props.IntProperty(name="Max Jobs",default=100,min=1,max=10000)  # type: ignore
+    max_jobs : bpy.props.IntProperty(name="Max Jobs/Nodes",default=100,min=1,max=10000)  # type: ignore
     job_arrays : bpy.props.StringProperty(name="Job arrays", default='')  # type: ignore
 
     job_type : bpy.props.EnumProperty(items=raas_config.JobQueue_items,name="Type of Job (resources)")  # type: ignore
@@ -1519,10 +1519,10 @@ async def SubmitJob(context, token):
 
         # server = raas_config.GetDAServer(context)        
         server = context.scene.raas_config_functions.call_get_da_server(context)
-        cmd = raas_jobs.CmdCreateJob(context)
+        cmd, len_tasks = raas_jobs.CmdCreateJob(context)
         if len(cmd) > 0:  # number of characters
             res = await raas_connection.ssh_command(server, cmd, preset)
-            if len(res.split('\n')) - 1 < 3: # number of returned slurm ids
+            if len(res.split('\n')) - 1 < len_tasks: # number of returned jobs
                 raise Exception("ssh command (CmdCreateJob) failed: %s" % cmd)
 
             cmd = raas_jobs.CmdCreateStatJobFile(context, res)
@@ -1532,7 +1532,7 @@ async def SubmitJob(context, token):
                     
      
 
-async def CancelJob(context, token):
+async def CancelPBSJob(context, token):
         idx = context.scene.raas_list_jobs_index 
         item = context.scene.raas_list_jobs[idx]
 
@@ -1554,7 +1554,7 @@ async def CancelJob(context, token):
                 cmd = 'qdel -W force %s' % (job_id)
                 res = await raas_connection.ssh_command(server, cmd, preset)
 
-        cmd = "sed -i 's/job_state = R/job_state = C/g' %s/%s.job;sed -i 's/job_state = Q/job_state = C/g' %s/%s.job;echo '   ' ftime = $(date) >> %s/%s.job" % (remote_path, item.Name, remote_path, item.Name, remote_path, item.Name)
+        cmd = "sed -i 's/job_state = R/job_state = X/g' %s/%s.job;sed -i 's/job_state = Q/job_state = X/g' %s/%s.job;echo '   ' ftime = $(date) >> %s/%s.job" % (remote_path, item.Name, remote_path, item.Name, remote_path, item.Name)
         res = await raas_connection.ssh_command(server, cmd, preset)
 
 
@@ -1602,6 +1602,18 @@ async def CancelSlurmJob(context, token):
         res = await raas_connection.ssh_command(server, cmd, preset)
 
 
+
+async def CancelJob(context, token):
+    #scheduler = raas_config.GetSchedulerFromContext(context)
+    scheduler = context.scene.raas_config_functions.call_get_scheduler_from_context(context)
+
+    if scheduler == 'SLURM':
+        return await CancelSlurmJob(context, token)
+    elif scheduler == 'PBS':
+        return await CancelPBSJob(context, token)
+    else:
+        raise ValueError("Unknown scheduler type: {}".format(scheduler))
+
 class RAAS_OT_CancelJob(
                         async_loop.AsyncModalOperatorMixin,
                         AuthenticatedRaasOperatorMixin,                         
@@ -1619,7 +1631,7 @@ class RAAS_OT_CancelJob(
 
         try:
             item = context.scene.raas_submitted_job_info_ext_new
-            await CancelSlurmJob(context, self.token)
+            await CancelJob(context, self.token)
             await ListSchedulerJobsForCurrentUser(context, self.token)     
         except Exception as e:
             import traceback

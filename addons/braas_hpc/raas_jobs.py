@@ -76,9 +76,9 @@ async def CreateJobTask3Dep(context,
     username = preset.raas_da_username
     use_xorg = str(job_type == 'ORIGEEVEE' or job_type == 'ORIGWORKBENCH')
     # use_mpi1 = raas_config.GetDAQueueMPIProcs(job_task1.CommandTemplateId)
-    use_mpi1 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task1.CommandTemplateId)
-    use_mpi2 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task2.CommandTemplateId)
-    use_mpi3 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task3.CommandTemplateId)
+    gpus1, use_mpi1 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task1.CommandTemplateId)
+    gpus2, use_mpi2 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task2.CommandTemplateId)
+    gpus3, use_mpi3 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task3.CommandTemplateId)
 
     if blender_job_info_new.render_type == 'IMAGE':        
         job_arrays = None
@@ -109,8 +109,14 @@ async def CreateJobTask3Dep(context,
                 max_jobs = 1
             else:
                 job_arrays = '%d-%d' % (1, max_jobs)
+
         else:
             job_arrays = custom_job_arrays
+            if use_mpi2 == True:
+                print("Custom job arrays are not supported with MPI. Ignoring custom job arrays.")
+
+        if use_mpi2 == True:
+            job_arrays = None
 
     frame_start = str(frame_start)
     frame_end = str(frame_end)
@@ -119,6 +125,8 @@ async def CreateJobTask3Dep(context,
     use_mpi1 = str(use_mpi1)
     use_mpi2 = str(use_mpi2)
     use_mpi3 = str(use_mpi3)
+
+    gpus2 = "1" if gpus2 else "0"
 
     blender_param = raas_connection.convert_path_to_linux(blender_job_info_new.blendfile)
     blender_version = raas_config.GetBlenderClusterVersion()
@@ -191,10 +199,14 @@ async def CreateJobTask3Dep(context,
         ]
     }
 
+    job_cores2 = job_task2.job_cores
+    if use_mpi2 == True:
+        job_cores2 = job_cores2 * max_jobs
+
     task2 = {
         "Name": blender_job_info_new.job_name,
-        "MinCores": job_task2.job_cores,
-        "MaxCores": job_task2.job_cores,
+        "MinCores": job_cores2,
+        "MaxCores": job_cores2,
         "WalltimeLimit": job_walltime,
         "StandardOutputFile": 'stdout',
         "StandardErrorFile": 'stderr',
@@ -236,6 +248,10 @@ async def CreateJobTask3Dep(context,
                 "Name": "use_mpi",
                 "Value": use_mpi2
             },
+            {
+                "Name": "gpus",
+                "Value": gpus2
+            },            
             {
                 "Name": "allocation_name",
                 "Value": blender_job_info_new.job_allocation
@@ -370,6 +386,191 @@ async def CreateJobTask3Dep(context,
     item.AllParameters = raas_server.json_dumps(data)
     # Tasks: bpy.props.StringProperty(name="Tasks")
 
+
+async def CreateJobTask1Dep(context, 
+                            token, 
+                            job_task2: JobTaskInfo,
+                            FileTransferMethodId, 
+                            ClusterId):
+
+    blender_job_info_new = context.scene.raas_blender_job_info_new
+    job_type = blender_job_info_new.job_type
+
+    pref = raas_pref.preferences()
+    preset = pref.cluster_presets[context.scene.raas_cluster_presets_index]    
+
+    job = None
+    username = preset.raas_da_username
+    use_xorg = str(job_type == 'ORIGEEVEE' or job_type == 'ORIGWORKBENCH')
+    # use_mpi1 = raas_config.GetDAQueueMPIProcs(job_task1.CommandTemplateId)
+    gpus2, use_mpi2 = context.scene.raas_config_functions.call_get_da_queue_mpi_procs(job_task2.CommandTemplateId)
+
+    if blender_job_info_new.render_type == 'IMAGE':        
+        job_arrays = None
+        frame_start = blender_job_info_new.frame_current
+        frame_end = blender_job_info_new.frame_current
+        #frame_step = str(blender_job_info_new.frame_step)
+        max_jobs = 1
+        custom_job_arrays = ''
+    else:
+        frame_start = blender_job_info_new.frame_start
+        frame_end = blender_job_info_new.frame_end
+        #frame_step = str(blender_job_info_new.frame_step)       
+        max_jobs = blender_job_info_new.max_jobs
+        custom_job_arrays = blender_job_info_new.job_arrays
+        # if use_mpi2 == 0:
+        #     # job_arrays = '%d-%d:%d' % (blender_job_info_new.frame_start,
+        #     #                            blender_job_info_new.frame_end, blender_job_info_new.frame_step)
+        # else:
+        #     # job_arrays = '%d-%d:%d' % (blender_job_info_new.frame_start,
+        #     #                            blender_job_info_new.frame_end, blender_job_info_new.frame_step * use_mpi2)
+
+        if len(custom_job_arrays) == 0:
+            if max_jobs > (frame_end - frame_start + 1):
+                max_jobs = (frame_end - frame_start + 1)        
+
+            if max_jobs < 1:
+                job_arrays = None
+                max_jobs = 1
+            else:
+                job_arrays = '%d-%d' % (1, max_jobs)
+        else:
+            job_arrays = custom_job_arrays
+            if use_mpi2 == True:
+                print("Custom job arrays are not supported with MPI. Ignoring custom job arrays.")
+
+        if use_mpi2 == True:
+            job_arrays = None
+
+    job_cores2 = job_task2.job_cores
+    if use_mpi2 == True:
+        job_cores2 = int(job_cores2) * int(max_jobs)
+
+    frame_start = str(frame_start)
+    frame_end = str(frame_end)
+    max_jobs = str(max_jobs)
+
+    use_mpi2 = str(use_mpi2)
+    gpus2 = "1" if gpus2 else "0"
+
+    blender_param = raas_connection.convert_path_to_linux(blender_job_info_new.blendfile)
+    blender_version = raas_config.GetBlenderClusterVersion()
+
+    job_walltime = blender_job_info_new.job_walltime * 60
+
+    task2 = {
+        "Name": blender_job_info_new.job_name,
+        "MinCores": job_cores2,
+        "MaxCores": job_cores2,
+        "WalltimeLimit": job_walltime,
+        "StandardOutputFile": 'stdout',
+        "StandardErrorFile": 'stderr',
+        "ProgressFile": 'stdprog',
+        "LogFile": 'stdlog',
+        "ClusterNodeTypeId":  job_task2.ClusterNodeTypeId,
+        "CommandTemplateId": job_task2.CommandTemplateId,
+        "Priority": 4,
+        "JobArrays": job_arrays,
+        "EnvironmentVariables": [
+            {
+                "Name": "job_project",
+                "Value": blender_job_info_new.job_project
+            },
+            {
+                "Name": "job_email",
+                "Value": blender_job_info_new.job_email
+            },
+            {
+                "Name": "frame_start",
+                "Value": frame_start
+            },
+            {
+                "Name": "frame_end",
+                "Value": frame_end
+            },
+            {
+                "Name": "blender_version",
+                "Value": blender_version
+            },
+            {
+                "Name": "use_xorg",
+                "Value": use_xorg
+            },
+            {
+                "Name": "use_mpi",
+                "Value": use_mpi2
+            },
+            {
+                "Name": "gpus",
+                "Value": gpus2
+            },            
+            {
+                "Name": "allocation_name",
+                "Value": blender_job_info_new.job_allocation
+            },
+            {
+                "Name": "username",
+                "Value": username
+            },
+            {
+                "Name": "max_jobs",
+                "Value": max_jobs
+            },
+            {
+                "Name": "job_arrays",
+                "Value": custom_job_arrays
+            }, 
+        ],
+        "TemplateParameterValues": [
+            {
+                "CommandParameterIdentifier": "inputParam",
+                "ParameterValue": blender_param
+            }
+        ]
+    }
+
+    job = {
+        "Name":  blender_job_info_new.job_name,
+        "MinCores": job_task2.job_cores,
+        "MaxCores": job_task2.job_cores,
+        "Priority": 4,
+        "Project":  blender_job_info_new.job_project,
+        "FileTransferMethodId":  FileTransferMethodId,
+        "ClusterId":  ClusterId,
+        "EnvironmentVariables":  None,
+        "WaitingLimit": 0,
+        "WalltimeLimit": job_walltime,
+        "Tasks":  [
+            task2
+        ]
+    }
+
+    data = {
+        "JobSpecification": job,
+        "SessionCode": token
+    }
+
+    item = context.scene.raas_submitted_job_info_ext_new
+
+    # Id : bpy.props.IntProperty(name="Id")
+    item.Id = 0
+    # Name : bpy.props.StringProperty(name="Name")
+    item.Name = blender_job_info_new.job_name
+    # State : bpy.props.EnumProperty(items=JobStateExt_items,name="State")
+    item.State = "CONFIGURING"
+    # Priority : bpy.props.EnumProperty(items=JobPriorityExt_items,name="Priority",default='AVERAGE')
+    item.Priority = "AVERAGE"
+    # Project : bpy.props.StringProperty(name="Project Name")
+    item.Project = blender_job_info_new.job_project
+    # CreationTime : bpy.props.StringProperty(name="Creation Time")
+    # SubmitTime : bpy.props.StringProperty(name="Submit Time")
+    # StartTime : bpy.props.StringProperty(name="Start Time")
+    # EndTime : bpy.props.StringProperty(name="End Time")
+    # TotalAllocatedTime : bpy.props.FloatProperty(name="totalAllocatedTime")
+    # AllParameters : bpy.props.StringProperty(name="allParameters")
+    item.AllParameters = raas_server.json_dumps(data)
+    # Tasks: bpy.props.StringProperty(name="Tasks")    
+
 def CmdCreatePBSJob(context):
     """
         Creates a command that correctly submits PBS jobs.
@@ -397,7 +598,7 @@ def CmdCreatePBSJob(context):
         file = task['TemplateParameterValues'][0]['ParameterValue']
 
         # ncpus = int(cores)
-        nodes = 1  # int(task['MaxCores'] / cores)
+        nodes = int(task['MaxCores'] / cores)
 
         envs = task['EnvironmentVariables']
         job_env = ''
@@ -433,7 +634,7 @@ def CmdCreatePBSJob(context):
         # if command_template_id in [16, 26, 17, 27]:  # eevee on barbora or karolina
         #     xorg_true = ' -l xorg=True '
 
-        custom_flags = context.scene.raas_config_functions.call_get_special_job_flags(context, cluster_id, command_template_id)
+        custom_flags = context.scene.raas_config_functions.call_get_special_job_flags(context, cluster_id, command_template_id, pid_queue)
 
         #pid = raas_config.GetDAOpenCallProject(pid_name)
         pid = context.scene.raas_config_functions.call_get_da_open_call_project(pid_name)
@@ -449,7 +650,7 @@ def CmdCreatePBSJob(context):
         task_id = task_id + 1
 
     print(cmd)
-    return cmd
+    return cmd, len(tasks)
 
 
 def CmdCreateSLURMJob(context):
@@ -484,7 +685,7 @@ def CmdCreateSLURMJob(context):
         file = task['TemplateParameterValues'][0]['ParameterValue']
 
         # ncpus = int(cores)
-        nodes = 1  # int(task['MaxCores'] / cores)
+        nodes = int(task['MaxCores'] / cores)
 
         envs = task['EnvironmentVariables']
         job_env = ''
@@ -530,7 +731,7 @@ def CmdCreateSLURMJob(context):
 
         task_id = task_id + 1
 
-    return cmd
+    return cmd, len(tasks)
 
 def CmdCreateJob(context):
     #scheduler = raas_config.GetSchedulerFromContext(context)
@@ -558,7 +759,10 @@ def CmdCreateStatPBSJobFile(context, pbs_jobs):
     cmd = ''
 
     pbs_jobs = pbs_jobs.split('\n')
-    pbs_job = pbs_jobs[1]
+    pbs_job = pbs_jobs[0]
+
+    if len(pbs_jobs) > 1 and len(pbs_jobs[1]) > 0:
+        pbs_job = pbs_jobs[1]
 
     if len(pbs_job) > 0:
         job_log = raas_connection.get_direct_access_remote_storage(
@@ -587,7 +791,11 @@ def CmdCreateStatSLURMJobFile(context, slurm_jobs):
     cmd = ''
 
     slurm_jobs = slurm_jobs.split('\n')  # e,g., '2752\n2753\n2754\n'
-    slurm_job = slurm_jobs[1]  # avoid the init and finish scripts
+    # slurm_job = slurm_jobs[1]  # avoid the init and finish scripts
+    slurm_job = slurm_jobs[0]
+
+    if len(slurm_jobs) > 1 and len(slurm_jobs[1]) > 0:
+        slurm_job = slurm_jobs[1]    
 
     if len(slurm_jobs) > 0:
         job_log = raas_connection.get_direct_access_remote_storage(
@@ -1102,6 +1310,7 @@ def pbs_map_pbs_status(pbs_status):
         'E': 8,   # RUNNING (exiting)
         'C': 16,  # FINISHED (completed)
         'F': 16,  # FINISHED
+        'X': 64,  # CANCELED
     }
     
     return status_map.get(pbs_status.upper(), 1)  # Default to CONFIGURING

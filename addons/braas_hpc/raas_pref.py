@@ -808,7 +808,7 @@ class RaasPreferences(AddonPreferences):
 
     raas_blender_link: StringProperty(
         name='Link',
-        default='https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.5-linux-x64.tar.xz'
+        default='https://ftp.nluug.nl/pub/graphics/blender/release/Blender5.1/blender-5.1.1-linux-x64.tar.xz'
     ) # type: ignore
 
     raas_scripts_installed: BoolProperty(

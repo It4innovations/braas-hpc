@@ -263,10 +263,12 @@ async def CreateJob(context, token):
 
             if 'JOB_CPU' in job_type:
                 # context, token, jobNodes, clusterNodeTypeId, CommandTemplateId, ..., FileTranferMethodId, ClusterId 
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 70), raas_jobs.JobTaskInfo(64, 71, 71), raas_jobs.JobTaskInfo(64, 71, 72), 2, 7)
+                # await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 70), raas_jobs.JobTaskInfo(64, 71, 71), raas_jobs.JobTaskInfo(64, 71, 72), 2, 7)
+                await raas_jobs.CreateJobTask1Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 71), 2, 7)
         
             elif 'JOB_GPU' in job_type:
-                await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 73), raas_jobs.JobTaskInfo(64, 71, 74), raas_jobs.JobTaskInfo(64, 71, 75), 2, 7)
+                # await raas_jobs.CreateJobTask3Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 73), raas_jobs.JobTaskInfo(64, 71, 74), raas_jobs.JobTaskInfo(64, 71, 75), 2, 7)
+                await raas_jobs.CreateJobTask1Dep(context, token, raas_jobs.JobTaskInfo(64, 71, 74), 2, 7)
 
         elif blender_job_info_new.cluster_type == 'AURORA':    
 
@@ -405,40 +407,40 @@ def GetDAOpenCallProject(pid):
 
 def GetDAQueueMPIProcs(CommandTemplateId):
     # BARBORA
-    if CommandTemplateId == 16:
-        return 4
+    if CommandTemplateId == 14:
+        return 4, False
     # KAROLINA
-    elif CommandTemplateId == 26:  
-        return 8
+    elif CommandTemplateId == 24:  
+        return 8, False
     # LUMI
-    elif CommandTemplateId == 36:  
-        return 8
+    elif CommandTemplateId == 34:  
+        return 8, False
     # LEONARDO
-    elif CommandTemplateId == 46:  
-        return 4 # GPUs   
+    elif CommandTemplateId == 44:  
+        return 4, False
     # "MARENOSTRUM5GPP": "MareNostrum 5 GPP",
-    elif CommandTemplateId == 56:  
-        return 0 # GPUs
+    elif CommandTemplateId == 54:  
+        return 0, False
     # "MARENOSTRUM5ACC": "MareNostrum 5 ACC",
-    elif CommandTemplateId == 66:  
-        return 4 # GPUs   
+    elif CommandTemplateId == 64:  
+        return 4, False
     # "POLARIS": "Polaris",
-    elif CommandTemplateId == 76:  
-        return 4 # GPUs   
+    elif CommandTemplateId == 74:  
+        return 4, True
     # "AURORA": "Aurora",
-    elif CommandTemplateId == 86:  
-        return 4 # GPUs
+    elif CommandTemplateId == 84:  
+        return 4, False
     # "VISTA": "Vista",
-    elif CommandTemplateId == 96:
-        return 1 # GPUs
+    elif CommandTemplateId == 94:
+        return 1, False
     # "FRONTERA": "Frontera",
-    elif CommandTemplateId == 106:
-        return 4 # GPUs    
-    elif CommandTemplateId == 116:
-        return 2 # GPUs
+    elif CommandTemplateId == 104:
+        return 4, False    
+    elif CommandTemplateId == 114:
+        return 2, False
 
     else:
-        return 0
+        return 0, False
 
 
 # return cores,queue,script
